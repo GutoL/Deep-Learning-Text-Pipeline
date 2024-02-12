@@ -1,3 +1,4 @@
+# https://towardsdatascience.com/interpreting-the-prediction-of-bert-model-for-text-classification-5ab09f8ef074
 from transformers import pipeline 
 from transformers_interpret import SequenceClassificationExplainer
 import torch
@@ -9,6 +10,7 @@ import emoji
 import numpy as np
 from captum.attr import LayerIntegratedGradients
 from matplotlib.colorbar import ColorbarBase
+from IPython.display import display, HTML
 
 
 class ExplainableTransformerPipeline():
@@ -32,16 +34,17 @@ class ExplainableTransformerPipeline():
         pred = self.__pipeline.model(inputs, attention_mask=torch.ones_like(inputs))
         return pred[position]
 
-    def visualize_word_importance_in_sentence(self, text:str):
+    def visualize_word_importance_in_sentence(self, text:str, id: int):
 
         word_attributions = self.__cls_explainer(text)
 
-        print('Prediction:', self.__cls_explainer.predicted_class_name)
-        print('Words importance:', word_attributions)
+        if id:
+            file_name = "xai_"+str(id)
+        else:
+            file_name = None
 
-        self.__cls_explainer.visualize()
-
-
+        self.__cls_explainer.visualize(html_filepath=file_name)
+        
     def visualize_word_importance(self, inputs: list, attributes: list, prediction:str):
         """
             Visualization method.

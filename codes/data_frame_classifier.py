@@ -121,3 +121,15 @@ class DataFrameClassifier(LanguageModelHandler):
             results_df.to_csv(results_file_name, index=False)
 
         return results_df
+    
+
+# print(language_model_manager.calculate_embeddings_local_model_with_batches(test_data))
+
+# # language_model_manager.zero_shot_classification(sentence='fuck off!', labels=['offensive', 'non-offensive'],
+# #                                                 model_name='facebook/bart-large-mnli')
+
+# language_model_manager.zero_shot_classification_dataframe(dataframe=data_handler.df.head(),
+#                                                           labels=['offensive', 'non-offensive'],
+#                                                           model_name='facebook/bart-large-mnli',
+#                                                           results_file_name='',
+#                                                           batch_size=1000)

@@ -8,7 +8,7 @@ import numpy as np
 from transformers import get_linear_schedule_with_warmup
 from torch.optim import AdamW
 from tqdm import tqdm
-
+from transformers.trainer_pt_utils import get_parameter_names
 
 
 from codes.language_model_handlers.language_model_handler import LanguageModelHandler
@@ -77,7 +77,12 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
     
             with torch.no_grad():        
                 outputs = self.model(**inputs)
-                
+
+            print('***********************')
+            print(type(outputs))
+            print(outputs)
+            print('***********************')
+
             loss = outputs[0]
             logits = outputs[1]
             loss_val_total += loss.item()
@@ -109,10 +114,31 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
 
         epochs = training_parameters['epochs']
 
-        optimizer = AdamW(self.model.parameters(), lr=training_parameters['learning_rate']) # eps=training_args['eps']
+        # optimizer = AdamW(self.model.parameters(), lr=training_parameters['learning_rate']) # eps=training_args['eps']
 
-        scheduler = get_linear_schedule_with_warmup(optimizer,
-                     num_warmup_steps=0, num_training_steps=len(dataloader_train)*epochs)
+        # Create adamw_torch optimizer manually
+        decay_parameters = get_parameter_names(self.model, [torch.nn.LayerNorm])
+        decay_parameters = [name for name in decay_parameters if "bias" not in name]
+
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in self.model.named_parameters() if n in decay_parameters],
+                "weight_decay": training_parameters['weight_decay'],
+            },
+            {
+                "params": [p for n, p in self.model.named_parameters() if n not in decay_parameters],
+                "weight_decay": 0.0,
+            },
+        ]
+
+        optimizer = AdamW(
+            optimizer_grouped_parameters,
+            lr=training_parameters['learning_rate'],
+            betas=(training_parameters['betas'][0],training_parameters['betas'][1])            
+        )
+
+
+        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=len(dataloader_train)*epochs)
 
         
         train_loss_per_epoch = []

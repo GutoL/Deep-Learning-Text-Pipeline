@@ -5,8 +5,6 @@ import pandas as pd
 from codes.data_handler import DataHandler
 from codes.exploratory_data_analysis import ExploratoryDataAnalysis
 from codes.language_model_handlers.pytorch_language_model_handler import PytorchLanguageModelHandler
-from codes.language_model_handlers.huggingface_language_model_handler import HuggingfaceLanguageModelHandler
-from codes.language_model_handlers.ml_based_language_model_handler import MachineLearningLanguageModelHandler
 
 import torch 
 import gc 
@@ -120,12 +118,15 @@ model_name='bert-base-uncased'
 language_model_manager = PytorchLanguageModelHandler(model_name=model_name,
                                               text_column=data_handler.get_text_column_name(),
                                               label_column=data_handler.label_column,
-                                              new_labels=new_labels)
+                                              new_labels=new_labels,
+                                              output_hidden_states=True)
 
 # Set up training arguments
 training_parameters = {
     'learning_rate':1e-6,
     # 'eps':1e-8,
+    'betas':(0.9, 0.999),
+    'weight_decay':0.01,
     'loss_function':nn.CrossEntropyLoss(),
     'dataset_train':train_data,
     'dataset_test':test_data,

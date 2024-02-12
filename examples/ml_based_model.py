@@ -4,8 +4,6 @@ sys.path.append("..")
 import pandas as pd
 from codes.data_handler import DataHandler
 from codes.exploratory_data_analysis import ExploratoryDataAnalysis
-from codes.language_model_handlers.pytorch_language_model_handler import PytorchLanguageModelHandler
-from codes.language_model_handlers.huggingface_language_model_handler import HuggingfaceLanguageModelHandler
 from codes.language_model_handlers.ml_based_language_model_handler import MachineLearningLanguageModelHandler
 
 import torch 
@@ -120,7 +118,8 @@ ml_language_model_handler = MachineLearningLanguageModelHandler(model_name=model
                                               text_column=data_handler.get_text_column_name(),
                                               label_column=data_handler.label_column,
                                               batch_size=64,
-                                              new_labels=new_labels)
+                                              new_labels=new_labels,
+                                              output_hidden_states=True)
 
 ml_language_model_handler.load_model(path=path+'saved_models/', name_file='bert-base-uncased')
 

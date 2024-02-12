@@ -4,9 +4,8 @@ sys.path.append("..")
 import pandas as pd
 from codes.data_handler import DataHandler
 from codes.exploratory_data_analysis import ExploratoryDataAnalysis
-from codes.language_model_handlers.pytorch_language_model_handler import PytorchLanguageModelHandler
 from codes.language_model_handlers.huggingface_language_model_handler import HuggingfaceLanguageModelHandler
-from codes.language_model_handlers.ml_based_language_model_handler import MachineLearningLanguageModelHandler
+from codes.explainable_ai_llm import ExplainableTransformerPipeline
 
 import torch 
 import gc 
@@ -15,7 +14,7 @@ from transformers import TrainingArguments
 
 original_text_column = 'text'
 label_column = 'classification'
-dataset_type = 'accuracy' #'accuracy' 'healthy' 'consistency'
+dataset_type = 'consistency' #'accuracy' 'healthy' 'consistency'
 extension = '.csv'
 
 # Colab
@@ -108,6 +107,10 @@ data_handler.unsample()
 
 train_data, test_data = data_handler.split_train_test_dataset()
 
+print('train_data', train_data.shape)
+print('test_data', test_data.shape)
+print('total of data to train and test:', train_data.shape[0]+test_data.shape[0], (train_data.shape[0]+test_data.shape[0])/2, 'per class')
+
 # Language Model (Huggingface based) Handler
 # --------------------------------------------------------------------------------
 
@@ -121,7 +124,8 @@ model_name = 'bert-base-uncased'
 language_model_manager = HuggingfaceLanguageModelHandler(model_name=model_name, # 'roberta-base',
                                               text_column=data_handler.get_text_column_name(),
                                               label_column=data_handler.label_column,
-                                              new_labels=new_labels)
+                                              new_labels=new_labels,
+                                              output_hidden_states=True)
 
 
 # sentences = test_data[data_handler.get_text_column_name()].to_list()
@@ -132,22 +136,33 @@ language_model_manager = HuggingfaceLanguageModelHandler(model_name=model_name, 
 
 
 # Set up training arguments
-training_args = TrainingArguments(
-    output_dir="./sentiment_transfer_learning_transformer/",
-    logging_dir='./sentiment_transfer_learning_transformer/logs',
-    logging_strategy='epoch',
-    logging_steps=100,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=4,
-    learning_rate=5e-6,
-    save_strategy='epoch',
-    save_steps=100,
-    evaluation_strategy='epoch',
-    eval_steps=100,
-    load_best_model_at_end=True,
-    num_train_epochs=10,
-    # seed=42
-)
+# training_args = TrainingArguments(
+#     output_dir="./sentiment_transfer_learning_transformer/",
+#     logging_dir='./sentiment_transfer_learning_transformer/logs',
+#     logging_strategy='epoch',
+#     logging_steps=100,
+#     per_device_train_batch_size=4,
+#     per_device_eval_batch_size=4,
+#     learning_rate=0.00005, # 0.000005
+#     save_strategy='epoch',
+#     save_steps=100,
+#     evaluation_strategy='epoch',
+#     eval_steps=100,
+#     load_best_model_at_end=True,
+#     num_train_epochs=15,
+#     # seed=42
+# )
+
+
+training_args = TrainingArguments(num_train_epochs=10, 
+                               learning_rate=2e-5,
+                               seed=42,
+                               optim='adamw_torch',
+                               output_dir='output',
+                               overwrite_output_dir=True,
+                               evaluation_strategy='epoch',
+                               do_eval=True,
+                               full_determinism=True)
 
 
 training_parameters = {
@@ -159,17 +174,46 @@ training_parameters = {
     'iterations':1    
 }
 
-results, trainer = language_model_manager.train_evaluate_model(training_parameters)
+# results, trainer = language_model_manager.train_evaluate_model(training_parameters)
 
-print('Testing results:', results)
+# print('Testing results:', results)
 
-language_model_manager.save_model(path=path+'saved_models/', name_file=model_name)# '''
+# language_model_manager.save_model(path=path+'saved_models/', name_file=model_name)# '''
 
-# # language_model_manager.zero_shot_classification(sentence='fuck off!', labels=['offensive', 'non-offensive'],
-# #                                                 model_name='facebook/bart-large-mnli')
+language_model_manager.load_model(path=path+'saved_models/', name_file=model_name)
 
-# language_model_manager.zero_shot_classification_dataframe(dataframe=data_handler.df.head(),
-#                                                           labels=['offensive', 'non-offensive'],
-#                                                           model_name='facebook/bart-large-mnli',
-#                                                           results_file_name='',
-#                                                           batch_size=1000)
+
+
+
+#### Generating the Embeddings
+
+# embeddings = language_model_manager.calculate_embeddings_local_model_with_batches(data=test_data)
+# language_model_manager.plot_embeddings(embeddings_results=embeddings, labels=test_data[data_handler.label_column].to_list(), algorithm='PCA')
+
+####### INTEGRATED GRADIENTS
+
+exp_model = ExplainableTransformerPipeline(model=language_model_manager.model,
+                                           tokenizer=language_model_manager.tokenizer,
+                                           device=language_model_manager.device)
+
+# Using integrated gradients to plot the word importance for few samples
+samples = test_data[test_data[label_column]==0].sample(n=3, random_state=42)
+
+print(data_handler.df.iloc[samples.index][data_handler.text_column].values)
+
+# OLHAAAAAA: https://towardsdatascience.com/interpreting-the-prediction-of-bert-model-for-text-classification-5ab09f8ef074
+
+for i, sample in enumerate(samples[data_handler.get_text_column_name()]):
+    # exp_model.explain(sample)
+    exp_model.visualize_word_importance_in_sentence(text=sample, id=i)
+    # exp_model.plot_word_importance(sample, bar=True)
+
+
+# results = exp_model.get_most_impactful_words_for_dataset(dataset=test_data,
+#                                                column_text=data_handler.get_text_column_name(),
+#                                                threshold=0.1,
+#                                                keyword=dataset_type,
+#                                                method='integrated_gradients',
+#                                                n=50)
+# results
+print('Done!')

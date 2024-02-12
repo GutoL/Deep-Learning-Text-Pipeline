@@ -6,13 +6,14 @@ from sentence_transformers import SentenceTransformer
 
 
 class LanguageModelHandler():
-    def __init__(self, model_name, new_labels, text_column, label_column, batch_size=32, text_size_limit=512):
+    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
         self.model_name = model_name
         self.tokenizer = None
         self.model = None
         self.trainer = None
         self.pipeline = None
         self.zero_shot_pipeline = None
+        self.output_hidden_states = output_hidden_states
         
         self.text_column = text_column
         self.label_column = label_column
@@ -50,7 +51,7 @@ class LanguageModelHandler():
             self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name,
                                                                             num_labels=self.num_labels,
                                                                             output_attentions=False,
-                                                                            output_hidden_states=True,
+                                                                            output_hidden_states=self.output_hidden_states,
                                                                             id2label=self.new_labels,
                                                                             hidden_dropout_prob=dropout_value)
         except:
@@ -58,7 +59,7 @@ class LanguageModelHandler():
             self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name,
                                                                             num_labels=self.num_labels,
                                                                             output_attentions=False,
-                                                                            output_hidden_states=True,
+                                                                            output_hidden_states=self.output_hidden_states,
                                                                             ignore_mismatched_sizes=True,
                                                                             id2label=self.new_labels,
                                                                             hidden_dropout_prob=dropout_value)
