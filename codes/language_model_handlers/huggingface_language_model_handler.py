@@ -1,20 +1,17 @@
 import numpy as np 
 
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from datasets import Dataset
 import evaluate
 from copy import deepcopy
 from transformers import Trainer, EarlyStoppingCallback
 from transformers import pipeline #, BertModel, BertTokenizer
-from sklearn.manifold import TSNE, MDS
-from sklearn.decomposition import PCA
 import pandas as pd
+import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
 from transformers.trainer_pt_utils import get_parameter_names
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler
-
 
 from codes.language_model_handlers.language_model_handler import LanguageModelHandler
 
@@ -23,6 +20,7 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
     
     def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
         super().__init__(model_name, new_labels, text_column, label_column, output_hidden_states, batch_size, text_size_limit)
+        self.handler_type == 'hugging_face'
         self.metric_accuracy = evaluate.load("accuracy")
         self.metric_precision = evaluate.load("precision")
         self.metric_recall = evaluate.load("recall")
@@ -58,27 +56,35 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
         
         return tokenized_dataset
 
+    def evaluate_model(self, dataloader_val):
+        self.model.eval()
     
+        predictions, true_vals = [], []
+        
+        for batch in dataloader_val:
+            
+            batch = tuple(b.to(self.device) for b in batch)
+            
+            inputs = {'input_ids':      batch[0],
+                      'attention_mask': batch[1],
+                      'labels':         batch[2]
+                     }
+    
+            with torch.no_grad():        
+                outputs = self.model(**inputs)
 
-    # Function to compute the metric
-    def compute_metrics(self, predictions_labels): # predictions_labels: EvalPrediction
-        predictions, labels = predictions_labels
-
-        if self.output_hidden_states == True:
-            predictions = np.argmax(predictions[0], axis=1)
-        else:
-            # probabilities = tf.nn.softmax(logits)
-            predictions = np.argmax(predictions, axis=1) # the first element of EvalPrediction is the logists
-
-        results = {
-            'accuracy': self.metric_accuracy.compute(predictions=predictions, references=labels),
-            'precision': self.metric_precision.compute(predictions=predictions, references=labels, average='weighted'),
-            'recall': self.metric_recall.compute(predictions=predictions, references=labels, average='weighted'),
-            'f1': self.metric_f1.compute(predictions=predictions, references=labels, average='weighted')
-        }
-
-        return results
-
+            logits = outputs['logits']
+            
+            logits = logits.detach().cpu().numpy()
+            label_ids = inputs['labels'].cpu().numpy()
+            predictions.append(logits)
+            true_vals.append(label_ids)
+        
+        predictions = np.concatenate(predictions, axis=0)
+        true_vals = np.concatenate(true_vals, axis=0)
+                
+        return predictions, true_vals
+    
     def train_evaluate_model(self, training_parameters):
         
         results_summary = {}
@@ -118,98 +124,40 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
             args=training_parameters['training_args'], 
             train_dataset=self.tokenized_dataset_train, 
             eval_dataset=self.tokenized_dataset_test, 
-            compute_metrics=self.compute_metrics, 
             loss_function=training_parameters['loss_function'],
             optimizers=(optimizer, None),
-            tokenizer=self.tokenizer
+            # compute_metrics=self.compute_metrics, 
+            # tokenizer=self.tokenizer
         )
-
-
-        # self.trainer = MyTrainer( # Trainer(
-        #     model = model,
-        #     args = training_parameters['training_args'],
-        #     train_dataset = self.tokenized_dataset_train,
-        #     eval_dataset = self.tokenized_dataset_test,
-        #     compute_metrics = self.compute_metrics,
-        #     loss_function = training_parameters['loss_function']            
-        # )
 
         if training_parameters['early_stopping_patience']:
             self.trainer.callbacks = [EarlyStoppingCallback(early_stopping_patience=training_parameters['early_stopping_patience'])]
 
         self.trainer.train()
 
-        results = self.trainer.evaluate(self.tokenized_dataset_test)
-
-        for metric in results:
-            if metric not in results_summary:
-                if metric in detailed_metrics:
-                    results_summary[metric] = [results[metric]["".join(metric.split('eval_'))]]
-                else:
-                    results_summary[metric] = [results[metric]]
-            else:
-                if metric in detailed_metrics:
-                    results_summary[metric].append(results[metric]["".join(metric.split('eval_'))])
-                else:
-                    results_summary[metric].append(results[metric])
-
-        # torch.cuda.empty_cache()
-        
         self.model = self.trainer.model
-        
-        return results_summary, self.trainer
-    
-    def tokenize_dataset_for_embeddings(self, data):
 
-        '''
-        This function takes list of texts and returns input_ids and attention_mask of texts
-        '''
-        encoded_dict = self.tokenizer.batch_encode_plus(data, add_special_tokens=True, max_length=128, padding='max_length',
-                                                   return_attention_mask=True, truncation=True, return_tensors='pt')
+        predictions, true_vals = self.evaluate_model(dataloader_val=self.prepare_dataset_for_embeddings(training_parameters['dataset_test']))
 
-        return encoded_dict['input_ids'], encoded_dict['attention_mask']
-    
-    def prepare_dataset_for_embeddings(self, data):
+        metrics = self.compute_metrics((np.argmax(predictions, axis=-1), true_vals))
 
-        input_ids, att_masks = self.tokenize_dataset_for_embeddings(data[self.text_column].to_list())     
-        # y = torch.LongTensor(data[self.label_column].to_list())
-        
-        #move on device (GPU)
-        input_ids = input_ids.to(self.device)
-        att_masks = att_masks.to(self.device)
-        # y = y.to(self.device)
-        
-        # dataset = TensorDataset(input_ids, att_masks, y)
-        dataset = TensorDataset(input_ids, att_masks)
-        sampler = RandomSampler(dataset)
-        data_loader = DataLoader(dataset, sampler=sampler, batch_size=self.batch_size)
+        print(metrics)
 
-        return data_loader
-    
-    def calculate_embeddings_local_model_with_batches(self, data: pd.DataFrame):
-        
-        data_loader = self.prepare_dataset_for_embeddings(data=data)
-        
-        X = np.array([])
-        
-        output_class = 'hidden_states' # 'logits' 
-        
-        for batch_data in tqdm(data_loader, desc='Data'):
+        # results = self.trainer.evaluate(self.tokenized_dataset_test)
 
-                input_ids, att_mask = [data for data in batch_data] # data.to(self.device)
+        # for metric in results:
+        #     if metric not in results_summary:
+        #         if metric in detailed_metrics:
+        #             results_summary[metric] = [results[metric]["".join(metric.split('eval_'))]]
+        #         else:
+        #             results_summary[metric] = [results[metric]]
+        #     else:
+        #         if metric in detailed_metrics:
+        #             results_summary[metric].append(results[metric]["".join(metric.split('eval_'))])
+        #         else:
+        #             results_summary[metric].append(results[metric])
 
-                with torch.no_grad():
-                    model_output = self.model(input_ids=input_ids, attention_mask=att_mask)
-
-                    # Removing the first hidden state
-                    # The first state is the input state
-                    token_embeddings = model_output[output_class][1:][-1]
-
-                    if X.shape[0] == 0:
-                        X = token_embeddings.cpu()
-                    else:
-                        X = np.concatenate((X, token_embeddings.cpu()), axis=0)
-        return {self.model_name: X}
+        return metrics, self.trainer
 
     def data_loader(self, dataframe, column):
         for row in dataframe.values:
@@ -223,25 +171,7 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
                 yield text    
             yield text 
 
-    def reduce_embeddings_dimentionality(self, X, algorithm='PCA'):
-        n_components = 2
-
-        if len(X.shape) > 2:
-            nsamples, nx, ny = X.shape
-            X = X.reshape((nsamples, nx*ny))
-     
-        if algorithm == 'PCA':
-            dim_reduction_obj = PCA(n_components=n_components)
-
-        elif algorithm == 'TSNE':
-            dim_reduction_obj = TSNE(n_components=n_components, verbose=0, perplexity=40, n_iter=300)
-
-        elif algorithm == 'MDS':
-            dim_reduction_obj = MDS(n_components=n_components, metric=True, random_state=42)
-        
-        return dim_reduction_obj.fit_transform(X)
-
-    def plot_embeddings(self, embeddings_results, labels, algorithm='PCA', all_together=False):
+    def plot_embeddings(self, file_name, embeddings_results, labels, algorithm='PCA', all_together=False):
 
         embeddings_df = pd.DataFrame()
 
@@ -262,10 +192,10 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
             embeddings_df = pd.concat([embeddings_df, df])
 
         if all_together:
-            self.plot_embbedings_together(embeddings_df)
+            self.plot_embbedings_together(embeddings_df, file_name)
         else:
-            self.plot_embbedings_separated(embeddings_df)
-
+            self.plot_embbedings_separated(embeddings_df, file_name)
+            
     def plot_embbedings_together(self, embeddings_df):
         plt.figure(figsize=(16,10))
 
@@ -302,7 +232,7 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
         plt.show()
 
 
-    def plot_embbedings_separated(self, embeddings_df):
+    def plot_embbedings_separated(self, embeddings_df, file_name):
         # Automatically assign colors and shapes
         unique_models = embeddings_df['model'].unique()
         unique_labels = embeddings_df['label'].unique()
@@ -343,8 +273,7 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
 
         # Show/save the plots
         # plt.show()
-        plt.savefig('embeddings.png')
-
+        plt.savefig(file_name)
 
 class MyTrainer(Trainer):
     def __init__(self, loss_function=None, **kwds):

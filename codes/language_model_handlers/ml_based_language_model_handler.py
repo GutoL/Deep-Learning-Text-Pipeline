@@ -12,25 +12,19 @@ from tqdm import tqdm
 from transformers import pipeline 
 import numpy as np
 import torch
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import EvalPrediction
 
 from codes.language_model_handlers.language_model_handler import LanguageModelHandler
 
 
 class MachineLearningLanguageModelHandler(LanguageModelHandler):
     
-    def tokenize_dataset(self, data):
+    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
+        super().__init__(model_name, new_labels, text_column, label_column, output_hidden_states, batch_size, text_size_limit)
+        self.handler_type = 'machine_learning'
 
-        '''
-        This function takes list of texts and returns input_ids and attention_mask of texts
-        '''
-        encoded_dict = self.tokenizer.batch_encode_plus(data, add_special_tokens=True, max_length=128, padding='max_length',
-                                                   return_attention_mask=True, truncation=True, return_tensors='pt')
-
-        return encoded_dict['input_ids'], encoded_dict['attention_mask']
-        
     def data_loader(self, dataframe, column):
         for row in dataframe.values:
             text = row[column] # Getting the text of the tweet
@@ -78,23 +72,6 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
         
         return results
     
-    def prepare_dataset(self, data):
-
-        input_ids, att_masks = self.tokenize_dataset(data[self.text_column].to_list())     
-        # y = torch.LongTensor(data[self.label_column].to_list())
-        
-        #move on device (GPU)
-        input_ids = input_ids.to(self.device)
-        att_masks = att_masks.to(self.device)
-        # y = y.to(self.device)
-        
-        # dataset = TensorDataset(input_ids, att_masks, y)
-        dataset = TensorDataset(input_ids, att_masks)
-        sampler = RandomSampler(dataset)
-        data_loader = DataLoader(dataset, sampler=sampler, batch_size=self.batch_size)
-
-        return data_loader
-    
     def calculate_embeddings_local_model(self, data):
         
         data_tokenized = self.tokenize_dataset(data)
@@ -107,39 +84,15 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
 
         return cls
 
-    def calculate_embeddings_local_model_with_batches(self, original_data):
         
-        data_loader = self.prepare_dataset(data=original_data)
-        
-        X = np.array([])
-        
-        output_class = 'hidden_states' # 'logits' 
-        
-        for batch_data in tqdm(data_loader, desc='Data'):
-
-                input_ids, att_mask = [data for data in batch_data] # data.to(self.device)
-
-                with torch.no_grad():
-                    model_output = self.model(input_ids=input_ids, attention_mask=att_mask)
-
-                    # Removing the first hidden state
-                    # The first state is the input state
-                    token_embeddings = model_output[output_class][1:][-1]
-
-                    if X.shape[0] == 0:
-                        X = token_embeddings.cpu()
-                    else:
-                        X = np.concatenate((X, token_embeddings.cpu()), axis=0)
-        return X
-    
     def _reshape_dataset_for_ml(self, data):
         nsamples, nx, ny = data.shape
         return data.reshape((nsamples, nx*ny))
     
     def train_evaluate_model(self, training_args, iterations):
         
-        X_train = self.calculate_embeddings_local_model_with_batches(training_args['dataset_train'])
-        X_test = self.calculate_embeddings_local_model_with_batches(training_args['dataset_test'])
+        X_train = self.calculate_embeddings_local_model_with_batches(training_args['dataset_train']).values()
+        X_test = self.calculate_embeddings_local_model_with_batches(training_args['dataset_test']).values()
 
         X_train = self._reshape_dataset_for_ml(X_train)
         X_test = self._reshape_dataset_for_ml(X_test)
@@ -169,9 +122,9 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
 
         # Make predictions on the test set
         y_pred = ml_model.predict(X_test)
-        
-        # Calculate accuracy
-        performance_metrics = self.compute_metrics((y_pred, y_test))
+
+        # Calculate performance
+        performance_metrics = self.compute_metrics(EvalPrediction(predictions=y_pred, label_ids=y_test))
         print('Testing metrics:', performance_metrics)
     
     # def load_model(self, path, name_file):

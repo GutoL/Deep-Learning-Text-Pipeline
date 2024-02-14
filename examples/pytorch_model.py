@@ -140,3 +140,5 @@ language_model_manager.save_model(path=path+'saved_models/', name_file=model_nam
 
 # tokenizer, model = language_model_manager.load_model(path=path+'saved_models/', name_file=model_name)
 
+language_model_manager.plot_embeddings_all_layters(data=test_data.rename(columns={data_handler.get_text_column_name():'text', data_handler.label_column:'label'}), 
+                                                   title=model_name+'_'+dataset_type)
