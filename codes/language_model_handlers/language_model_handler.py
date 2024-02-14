@@ -99,6 +99,8 @@ class LanguageModelHandler():
         
 
     def load_model(self, path, name_file):
+        name_file = name_file.replace('/','-')
+        
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(path+name_file)
         # Load Model
@@ -241,7 +243,7 @@ class LanguageModelHandler():
 
             yield (seq, mask), torch.LongTensor([data[i][1] for i in batch])
 
-    def plot_embeddings_all_layters(self, data, title):
+    def plot_embeddings_all_layers(self, data, title, labels_to_replace=None):
         max_length = 128
         val_masks,val_ys = torch.zeros(0, max_length), torch.zeros(0, 1)
 
@@ -266,9 +268,13 @@ class LanguageModelHandler():
                     val_hidden_states = tuple(torch.cat([layer_hidden_state_all,layer_hidden_state_batch.cpu()]) 
                                             for layer_hidden_state_all,layer_hidden_state_batch in zip(val_hidden_states,hidden_states))
 
+        if labels_to_replace:
+            val_ys = data[self.label_column].map(labels_to_replace).to_list()
+
         self.visualize_layerwise_embeddings(hidden_states=val_hidden_states, masks=val_masks, ys=val_ys, title=title)
 
-    def visualize_layerwise_embeddings(self, hidden_states, masks, ys, title, layers_to_visualize=[0,1,2,3,8,9,10,11]):
+    # Based on: https://medium.com/towards-data-science/visualize-bert-sequence-embeddings-an-unseen-way-1d6a351e4568
+    def visualize_layerwise_embeddings(self, hidden_states, masks, ys, title, layers_to_visualize=[0,1,10,11]):
         title = title.replace('/','-')
         filename = f'results/embeddings/{title}.png'
         print('visualize_layerwise_embeddings for', title)
@@ -276,7 +282,9 @@ class LanguageModelHandler():
         num_layers = len(layers_to_visualize)
         fig = plt.figure(figsize=(24,(num_layers/4)*6)) #each subplot of size 6x6
         ax = [fig.add_subplot(int(num_layers/4),4,i+1) for i in range(num_layers)]
-        ys = ys.numpy().reshape(-1)
+
+        if type(ys) != list:
+            ys = ys.numpy().reshape(-1)
         
         for i,layer_i in enumerate(layers_to_visualize):#range(hidden_states):
             layer_hidden_states = hidden_states[layer_i]
@@ -284,8 +292,10 @@ class LanguageModelHandler():
             # layer_dim_reduced_vectors = dim_reducer.fit_transform(averaged_layer_hidden_states.numpy())
             layer_dim_reduced_vectors = self.reduce_embeddings_dimentionality(averaged_layer_hidden_states.numpy(), algorithm='TSNE')
             df = pd.DataFrame.from_dict({'x':layer_dim_reduced_vectors[:,0],'y':layer_dim_reduced_vectors[:,1],'label':ys})
-            df.label = df.label.astype(int)
-            sns.scatterplot(data=df,x='x',y='y',hue='label',ax=ax[i])
+            
+            # df.label = df.label.astype(int)
+
+            sns.scatterplot(data=df, x='x', y='y', hue='label', ax=ax[i])
             # fig.suptitle(f"{title}: epoch {epoch}")
             ax[i].set_title(f"layer {layer_i+1}")
         
