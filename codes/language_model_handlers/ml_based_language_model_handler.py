@@ -3,7 +3,7 @@
 # https://towardsdatascience.com/a-beginners-guide-to-text-classification-with-scikit-learn-632357e16f3a#1629
 # Getting embeddings from the final BERT layer https://towardsdatascience.com/3-types-of-contextualized-word-embeddings-from-bert-using-transfer-learning-81fcefe3fe6d
 
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
@@ -90,13 +90,17 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
         return data.reshape((nsamples, nx*ny))
     
     def train_evaluate_model(self, training_args, iterations):
+        # print([name for name, parameter in self.model.named_parameters()])
+
+        # X_train = self.calculate_embeddings_local_model_with_batches(training_args['dataset_train']).values()
+        # X_test = self.calculate_embeddings_local_model_with_batches(training_args['dataset_test']).values()
+       
+        hidden_states, masks, _ = self.calculate_embeddings_model_layers(training_args['dataset_train'], only_last_layer=True)
+        X_train = np.array(list(self.calculate_average_embeddings(hidden_states, masks, layers_ids=[0]).values())[0])
+
+        hidden_states, masks, _ = self.calculate_embeddings_model_layers(training_args['dataset_test'], only_last_layer=True)
+        X_test = np.array(list(self.calculate_average_embeddings(hidden_states, masks, layers_ids=[0]).values())[0])
         
-        X_train = self.calculate_embeddings_local_model_with_batches(training_args['dataset_train']).values()
-        X_test = self.calculate_embeddings_local_model_with_batches(training_args['dataset_test']).values()
-
-        X_train = self._reshape_dataset_for_ml(X_train)
-        X_test = self._reshape_dataset_for_ml(X_test)
-
         print(X_train.shape, X_test.shape)
         
         y_train = training_args['dataset_train'][self.label_column]
@@ -116,6 +120,9 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
 
         elif training_args['ml_model'].lower() == 'logistic regression':
             ml_model = LogisticRegression()
+        
+        elif training_args['ml_model'].lower() == 'gradient boosting':
+            ml_model = GradientBoostingClassifier(n_estimators=100, learning_rate=1.0, max_depth=1, random_state=training_args['seed'])
 
         print('Training model...')
         ml_model.fit(X_train, y_train)
@@ -125,11 +132,5 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
 
         # Calculate performance
         performance_metrics = self.compute_metrics(EvalPrediction(predictions=y_pred, label_ids=y_test))
-        print('Testing metrics:', performance_metrics)
-    
-    # def load_model(self, path, name_file):
-    #     # Load tokenizer
-    #     self.tokenizer = AutoTokenizer.from_pretrained(path+name_file)
-    #     # Load Model
-    #     self.model = AutoModelForSequenceClassification.from_pretrained(path+name_file)
-    #     self.model.to(self.device)
+        
+        return performance_metrics

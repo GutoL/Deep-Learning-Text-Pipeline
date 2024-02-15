@@ -34,14 +34,9 @@ class ExplainableTransformerPipeline():
         pred = self.__pipeline.model(inputs, attention_mask=torch.ones_like(inputs))
         return pred[position]
 
-    def visualize_word_importance_in_sentence(self, text:str, id: int):
+    def visualize_word_importance_in_sentence(self, text:str, file_name:str=None):
 
         word_attributions = self.__cls_explainer(text)
-
-        if id:
-            file_name = "xai_"+str(id)
-        else:
-            file_name = None
 
         self.__cls_explainer.visualize(html_filepath=file_name)
         

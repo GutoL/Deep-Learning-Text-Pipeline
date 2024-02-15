@@ -14,7 +14,7 @@ from tqdm import tqdm
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 class LanguageModelHandler():
-    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
+    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=128):
         self.handler_type = None
         self.model_name = model_name
         self.tokenizer = None
@@ -30,7 +30,7 @@ class LanguageModelHandler():
         self.num_labels = len(new_labels)
         self.new_labels = new_labels
         
-        self.text_size_limit = text_size_limit
+        self.max_length = text_size_limit
         self.batch_size = batch_size
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -124,11 +124,6 @@ class LanguageModelHandler():
         labels = eval_pred.label_ids
         
         average_mode = 'weighted'
-
-        # print('===================================')
-        # print(preds)
-        # print(labels)
-        # print('===================================')
         
         return {
             'accuracy': accuracy_score(labels, preds),
@@ -153,41 +148,13 @@ class LanguageModelHandler():
             embeddings_results[model_name] = embeddings
 
         return embeddings_results
-    
-    def calculate_embeddings_local_model_with_batches(self, data):
-        
-        data_loader = self.prepare_dataset(data=data)
-        
-        X = np.array([])
-        
-        output_class = 'logits' # 'logits'  hidden_states
-        
-        for batch_data in tqdm(data_loader, desc='Data'):
 
-                input_ids, att_mask, _ = [data for data in batch_data] # data.to(self.device)
-
-                with torch.no_grad():
-                    model_output = self.model(input_ids=input_ids, attention_mask=att_mask)
-
-                    # Removing the first hidden state
-                    # The first state is the input state
-                    # model_output[output_class][1:][-1]
-
-                    embeddings = model_output[output_class]
-
-                    if X.shape[0] == 0:
-                        X = embeddings.cpu()
-                    else:
-                        X = np.concatenate((X, embeddings.cpu()), axis=0)
-
-        return {self.model_name: X}
-    
     def tokenize_dataset(self, data):
 
         '''
         This function takes list of texts and returns input_ids and attention_mask of texts
         '''
-        encoded_dict = self.tokenizer.batch_encode_plus(data, add_special_tokens=True, max_length=128, padding='max_length',
+        encoded_dict = self.tokenizer.batch_encode_plus(data, add_special_tokens=True, max_length=self.max_length, padding='max_length',
                                                    return_attention_mask=True, truncation=True, return_tensors='pt')
 
         return encoded_dict['input_ids'], encoded_dict['attention_mask']
@@ -229,25 +196,22 @@ class LanguageModelHandler():
     
     
     def get_bert_encoded_data_in_batches(self, df):
-        data = [(row.text, row.label,) for _, row in df.iterrows()]
+        data = [(row[self.text_column], row[self.label_column],) for _, row in df.iterrows()]
         sampler = torch.utils.data.sampler.SequentialSampler(data)
         batch_sampler = torch.utils.data.BatchSampler(sampler,batch_size=self.batch_size if self.batch_size > 0 else len(data), drop_last=False)
         
         for batch in batch_sampler:
-            encoded_batch_data = self.tokenizer.batch_encode_plus([data[i][0] for i in batch], add_special_tokens=True, max_length=128, padding='max_length', return_attention_mask=True, truncation=True, return_tensors='pt')
+            encoded_batch_data = self.tokenizer.batch_encode_plus([data[i][0] for i in batch], add_special_tokens=True, max_length=self.max_length, padding='max_length', return_attention_mask=True, truncation=True, return_tensors='pt')
 
-            # seq = torch.tensor(encoded_batch_data['input_ids'])
-            # mask = torch.tensor(encoded_batch_data['attention_mask'])
             seq = encoded_batch_data['input_ids'].clone().detach()
             mask = encoded_batch_data['attention_mask'].clone().detach()
 
             yield (seq, mask), torch.LongTensor([data[i][1] for i in batch])
 
-    def plot_embeddings_all_layers(self, data, title, labels_to_replace=None):
-        max_length = 128
-        val_masks,val_ys = torch.zeros(0, max_length), torch.zeros(0, 1)
+    def calculate_embeddings_model_layers(self, data, only_last_layer):
+        test_masks, test_ys = torch.zeros(0, self.max_length), torch.zeros(0, 1)
 
-        val_hidden_states = None
+        test_hidden_states = None
 
         for x, y in self.get_bert_encoded_data_in_batches(data):
             sent_ids, masks = x
@@ -258,39 +222,62 @@ class LanguageModelHandler():
                 model_out = self.model(sent_ids, masks)
             
                 hidden_states = model_out.hidden_states[1:]
-            
-                val_masks = torch.cat([val_masks,masks.cpu()])
-                val_ys = torch.cat([val_ys, y.cpu().view(-1,1)])
 
-                if type(val_hidden_states) == type(None):
-                    val_hidden_states = tuple(layer_hidden_states.cpu() for layer_hidden_states in hidden_states)
+                if only_last_layer:
+                    hidden_states = tuple([hidden_states[-1]]) # getting only the embeddings from the last layer
+                
+                test_masks = torch.cat([test_masks, masks.cpu()])
+                test_ys = torch.cat([test_ys, y.cpu().view(-1,1)])
+
+                if type(test_hidden_states) == type(None):
+                    test_hidden_states = tuple(layer_hidden_states.cpu() for layer_hidden_states in hidden_states)
                 else:
-                    val_hidden_states = tuple(torch.cat([layer_hidden_state_all,layer_hidden_state_batch.cpu()]) 
-                                            for layer_hidden_state_all,layer_hidden_state_batch in zip(val_hidden_states,hidden_states))
+                    test_hidden_states = tuple(torch.cat([layer_hidden_state_all, layer_hidden_state_batch.cpu()]) 
+                                            for layer_hidden_state_all, layer_hidden_state_batch in zip(test_hidden_states, hidden_states))
+        
+        return test_hidden_states, test_masks, test_ys
+    
+    def calculate_average_embeddings(self, hidden_states, masks, layers_ids):
+        all_averaged_layer_hidden_states = {}
+        
+        for layer_i in range(len(hidden_states)):
+            if layer_i in layers_ids:
+                all_averaged_layer_hidden_states[layer_i] = torch.div(hidden_states[layer_i].sum(dim=1), masks.sum(dim=1, keepdim=True))
+        
+        return all_averaged_layer_hidden_states
+
+    def plot_embeddings_layers(self, data, results_path, filename, labels_to_replace=None, number_of_layers_to_plot=2):
+        
+        test_hidden_states, test_masks, test_ys = self.calculate_embeddings_model_layers(data, only_last_layer=False)
+        
+        layers_to_visualize = [] # [0,1,10,11]
+
+        for x in range(number_of_layers_to_plot):
+            layers_to_visualize.append(x) # ploting first N layers
+            layers_to_visualize.append(len(test_hidden_states)-x-1) # ploting last N layers
+        
+        layers_to_visualize.sort()
+
+        all_averaged_layer_hidden_states = self.calculate_average_embeddings(test_hidden_states, test_masks, layers_ids=layers_to_visualize)
 
         if labels_to_replace:
-            val_ys = data[self.label_column].map(labels_to_replace).to_list()
+            test_ys = data[self.label_column].map(labels_to_replace).to_list()
 
-        self.visualize_layerwise_embeddings(hidden_states=val_hidden_states, masks=val_masks, ys=val_ys, title=title)
+        self.visualize_layerwise_embeddings(all_averaged_layer_hidden_states=all_averaged_layer_hidden_states, ys=test_ys, results_path=results_path, filename=filename)
 
     # Based on: https://medium.com/towards-data-science/visualize-bert-sequence-embeddings-an-unseen-way-1d6a351e4568
-    def visualize_layerwise_embeddings(self, hidden_states, masks, ys, title, layers_to_visualize=[0,1,10,11]):
-        title = title.replace('/','-')
-        filename = f'results/embeddings/{title}.png'
-        print('visualize_layerwise_embeddings for', title)
-
-        num_layers = len(layers_to_visualize)
+    def visualize_layerwise_embeddings(self, all_averaged_layer_hidden_states, ys, results_path, filename):
+        
+        num_layers = len(all_averaged_layer_hidden_states)
+        
         fig = plt.figure(figsize=(24,(num_layers/4)*6)) #each subplot of size 6x6
         ax = [fig.add_subplot(int(num_layers/4),4,i+1) for i in range(num_layers)]
 
         if type(ys) != list:
             ys = ys.numpy().reshape(-1)
         
-        for i,layer_i in enumerate(layers_to_visualize):#range(hidden_states):
-            layer_hidden_states = hidden_states[layer_i]
-            averaged_layer_hidden_states = torch.div(layer_hidden_states.sum(dim=1),masks.sum(dim=1,keepdim=True))
-            # layer_dim_reduced_vectors = dim_reducer.fit_transform(averaged_layer_hidden_states.numpy())
-            layer_dim_reduced_vectors = self.reduce_embeddings_dimentionality(averaged_layer_hidden_states.numpy(), algorithm='TSNE')
+        for i, layer_i in enumerate(all_averaged_layer_hidden_states): #range(hidden_states):
+            layer_dim_reduced_vectors = self.reduce_embeddings_dimentionality(all_averaged_layer_hidden_states[layer_i].numpy(), algorithm='TSNE')
             df = pd.DataFrame.from_dict({'x':layer_dim_reduced_vectors[:,0],'y':layer_dim_reduced_vectors[:,1],'label':ys})
             
             # df.label = df.label.astype(int)
@@ -299,7 +286,8 @@ class LanguageModelHandler():
             # fig.suptitle(f"{title}: epoch {epoch}")
             ax[i].set_title(f"layer {layer_i+1}")
         
-        plt.savefig(filename, format='png', pad_inches=0)
+        print('visualize_layerwise_embeddings for', results_path+filename)
+        plt.savefig(results_path+filename, format='png', pad_inches=0) # f'results/embeddings/{title}.png'
 
 
     #### ABSTRACT METHODS
@@ -309,4 +297,33 @@ class LanguageModelHandler():
     def train_evaluate_model(self, training_parameters):
         pass
 
+
+    # def calculate_embeddings_local_model_with_batches(self, data):
+        
+    #     data_loader = self.prepare_dataset(data=data)
+        
+    #     X = np.array([])
+        
+    #     output_class = 'logits' # 'logits'  hidden_states
+        
+    #     for batch_data in tqdm(data_loader, desc='Data'):
+
+    #             input_ids, att_mask, _ = [data for data in batch_data] # data.to(self.device)
+
+    #             with torch.no_grad():
+    #                 model_output = self.model(input_ids=input_ids, attention_mask=att_mask)
+
+    #                 # Removing the first hidden state
+    #                 # The first state is the input state
+    #                 # model_output[output_class][1:][-1]
+
+    #                 embeddings = model_output[output_class]
+
+    #                 if X.shape[0] == 0:
+    #                     X = embeddings.cpu()
+    #                 else:
+    #                     X = np.concatenate((X, embeddings.cpu()), axis=0)
+
+    #     return {self.model_name: X}
+    
 
