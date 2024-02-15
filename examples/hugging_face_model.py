@@ -190,8 +190,8 @@ language_model_manager.load_model(path=path+'saved_models/', name_file=model_nam
 # embeddings = language_model_manager.calculate_embeddings_local_model_with_batches(data=test_data)
 # language_model_manager.plot_embeddings(embeddings_results=embeddings, labels=test_data[data_handler.label_column].to_list(), algorithm='PCA')
 
-language_model_manager.plot_embeddings_all_layters(data=test_data.rename(columns={data_handler.get_text_column_name():'text', data_handler.label_column:'label'}), 
-                                                   title=model_name+'_'+dataset_type)
+language_model_manager.plot_embeddings_layers(data=test_data, results_path=path+'results/embeddings/'+dataset_type+'/', filename=model_name+'_'+dataset_type+'.png',
+                                                  labels_to_replace=new_labels, algorithm='TSNE')
 
 
 ####### INTEGRATED GRADIENTS
@@ -205,7 +205,7 @@ samples = test_data[test_data[label_column]==0].sample(n=3, random_state=42)
 
 print(data_handler.df.iloc[samples.index][data_handler.text_column].values)
 
-# OLHAAAAAA: https://towardsdatascience.com/interpreting-the-prediction-of-bert-model-for-text-classification-5ab09f8ef074
+# https://towardsdatascience.com/interpreting-the-prediction-of-bert-model-for-text-classification-5ab09f8ef074
 
 for i, sample in enumerate(samples[data_handler.get_text_column_name()]):
     # exp_model.explain(sample)

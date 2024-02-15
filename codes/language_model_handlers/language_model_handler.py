@@ -246,7 +246,7 @@ class LanguageModelHandler():
         
         return all_averaged_layer_hidden_states
 
-    def plot_embeddings_layers(self, data, results_path, filename, labels_to_replace=None, number_of_layers_to_plot=2):
+    def plot_embeddings_layers(self, data, results_path, filename, algorithm='TSNE', labels_to_replace=None, number_of_layers_to_plot=2):
         
         test_hidden_states, test_masks, test_ys = self.calculate_embeddings_model_layers(data, only_last_layer=False)
         
@@ -263,10 +263,10 @@ class LanguageModelHandler():
         if labels_to_replace:
             test_ys = data[self.label_column].map(labels_to_replace).to_list()
 
-        self.visualize_layerwise_embeddings(all_averaged_layer_hidden_states=all_averaged_layer_hidden_states, ys=test_ys, results_path=results_path, filename=filename)
+        self.visualize_layerwise_embeddings(all_averaged_layer_hidden_states=all_averaged_layer_hidden_states, ys=test_ys, results_path=results_path, filename=filename, algorithm=algorithm)
 
     # Based on: https://medium.com/towards-data-science/visualize-bert-sequence-embeddings-an-unseen-way-1d6a351e4568
-    def visualize_layerwise_embeddings(self, all_averaged_layer_hidden_states, ys, results_path, filename):
+    def visualize_layerwise_embeddings(self, all_averaged_layer_hidden_states, ys, results_path, filename, algorithm):
         
         num_layers = len(all_averaged_layer_hidden_states)
         
@@ -277,7 +277,7 @@ class LanguageModelHandler():
             ys = ys.numpy().reshape(-1)
         
         for i, layer_i in enumerate(all_averaged_layer_hidden_states): #range(hidden_states):
-            layer_dim_reduced_vectors = self.reduce_embeddings_dimentionality(all_averaged_layer_hidden_states[layer_i].numpy(), algorithm='TSNE')
+            layer_dim_reduced_vectors = self.reduce_embeddings_dimentionality(all_averaged_layer_hidden_states[layer_i].numpy(), algorithm=algorithm)
             df = pd.DataFrame.from_dict({'x':layer_dim_reduced_vectors[:,0],'y':layer_dim_reduced_vectors[:,1],'label':ys})
             
             # df.label = df.label.astype(int)
