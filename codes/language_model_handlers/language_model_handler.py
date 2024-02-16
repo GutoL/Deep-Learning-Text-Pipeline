@@ -9,12 +9,12 @@ from sklearn.manifold import TSNE, MDS
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
-from tqdm import tqdm
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
+plt.rcParams['figure.dpi'] = 300
+
 class LanguageModelHandler():
-    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=128):
+    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=128, random_state=42):
         self.handler_type = None
         self.model_name = model_name
         self.tokenizer = None
@@ -23,6 +23,7 @@ class LanguageModelHandler():
         self.pipeline = None
         self.zero_shot_pipeline = None
         self.output_hidden_states = output_hidden_states
+        self.random_state = random_state
         
         self.text_column = text_column
         self.label_column = label_column
@@ -246,7 +247,21 @@ class LanguageModelHandler():
         
         return all_averaged_layer_hidden_states
 
-    def plot_embeddings_layers(self, data, results_path, filename, algorithm='TSNE', labels_to_replace=None, number_of_layers_to_plot=2):
+    def plot_embeddings_layers(self, data, results_path, filename, sample_size=None, algorithm='TSNE', labels_to_replace=None, number_of_layers_to_plot=2):
+        
+        if sample_size:
+            reduced_data = pd.DataFrame()
+
+            for label_value in set(data[self.label_column].tolist()):
+                
+                temp_df = data[data[self.label_column] == label_value]
+                
+                if sample_size > temp_df.shape[0]:
+                    sample_size = temp_df.shape[0]
+                
+                reduced_data = pd.concat([reduced_data, temp_df.sample(n=sample_size, random_state=self.random_state)])
+
+            data = reduced_data
         
         test_hidden_states, test_masks, test_ys = self.calculate_embeddings_model_layers(data, only_last_layer=False)
         
@@ -264,29 +279,38 @@ class LanguageModelHandler():
             test_ys = data[self.label_column].map(labels_to_replace).to_list()
 
         self.visualize_layerwise_embeddings(all_averaged_layer_hidden_states=all_averaged_layer_hidden_states, ys=test_ys, results_path=results_path, filename=filename, algorithm=algorithm)
+            
 
     # Based on: https://medium.com/towards-data-science/visualize-bert-sequence-embeddings-an-unseen-way-1d6a351e4568
     def visualize_layerwise_embeddings(self, all_averaged_layer_hidden_states, ys, results_path, filename, algorithm):
         
         num_layers = len(all_averaged_layer_hidden_states)
         
-        fig = plt.figure(figsize=(24,(num_layers/4)*6)) #each subplot of size 6x6
-        ax = [fig.add_subplot(int(num_layers/4),4,i+1) for i in range(num_layers)]
+        fig = plt.figure(figsize=(24, (num_layers/4)*6)) #each subplot of size 6x6
+        ax = [fig.add_subplot(int(num_layers/2), num_layers*2, i+1) for i in range(num_layers)]
 
         if type(ys) != list:
             ys = ys.numpy().reshape(-1)
         
         for i, layer_i in enumerate(all_averaged_layer_hidden_states): #range(hidden_states):
+            
             layer_dim_reduced_vectors = self.reduce_embeddings_dimentionality(all_averaged_layer_hidden_states[layer_i].numpy(), algorithm=algorithm)
-            df = pd.DataFrame.from_dict({'x':layer_dim_reduced_vectors[:,0],'y':layer_dim_reduced_vectors[:,1],'label':ys})
+            
+            df = pd.DataFrame.from_dict({'x':layer_dim_reduced_vectors[:,0], 'y':layer_dim_reduced_vectors[:,1], 'label':ys})
             
             # df.label = df.label.astype(int)
 
             sns.scatterplot(data=df, x='x', y='y', hue='label', ax=ax[i])
             # fig.suptitle(f"{title}: epoch {epoch}")
             ax[i].set_title(f"layer {layer_i+1}")
-        
+            
+            # Removing axis values
+            ax[i].get_xaxis().set_visible(False)
+            ax[i].get_yaxis().set_visible(False)
+
         print('visualize_layerwise_embeddings for', results_path+filename)
+        
+        # plt.legend(bbox_to_anchor=(1.04, 0.5), borderaxespad=0)
         plt.savefig(results_path+filename, format='png', pad_inches=0) # f'results/embeddings/{title}.png'
 
 
