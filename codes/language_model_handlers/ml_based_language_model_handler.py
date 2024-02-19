@@ -21,8 +21,8 @@ from codes.language_model_handlers.language_model_handler import LanguageModelHa
 
 class MachineLearningLanguageModelHandler(LanguageModelHandler):
     
-    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
-        super().__init__(model_name, new_labels, text_column, label_column, output_hidden_states, batch_size, text_size_limit)
+    def __init__(self, model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
+        super().__init__(model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states, batch_size, text_size_limit)
         self.handler_type = 'machine_learning'
 
     def data_loader(self, dataframe, column):

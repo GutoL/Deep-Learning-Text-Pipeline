@@ -15,8 +15,8 @@ from transformers import EvalPrediction
 from codes.language_model_handlers.language_model_handler import LanguageModelHandler
 
 class PytorchLanguageModelHandler(LanguageModelHandler):
-    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
-        super().__init__(model_name, new_labels, text_column, label_column, output_hidden_states, batch_size, text_size_limit)
+    def __init__(self, model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
+        super().__init__(model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states, batch_size, text_size_limit)
         self.handler_type = 'pytorch'
     
     def tokenize_dataset(self, data):
@@ -31,6 +31,9 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
 
 
     def evaluate_model(self, test_dataset):
+        
+        # classifications_df = pd.DataFrame(test_dataset[self.text_column].to_list(), columns=[self.text_column])
+        classifications_df = pd.DataFrame()
 
         dataloader_test = self.prepare_dataset(test_dataset)
 
@@ -38,11 +41,19 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
     
         loss_val_total = 0
         predictions, true_vals = [], []
-        
+
+        texts = []
+        labels = []
+
         for batch in dataloader_test:
             
-            batch = tuple(b.to(self.device) for b in batch)
-            
+            batch = tuple(b.to(self.device) for b in batch)            
+
+            for i in range(len(batch[0])):
+                text = [token for token in self.tokenizer.decode(batch[0][i], skip_special_tokens=True).split()] # removing special tokens from BERT-based model
+                texts.append(' '.join(text))
+                labels.append(batch[2][i].cpu().numpy())
+
             inputs = {'input_ids':      batch[0],
                       'attention_mask': batch[1],
                       'labels':         batch[2],
@@ -62,13 +73,17 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
         
         loss_val_avg = loss_val_total/len(dataloader_test) 
         
-        predictions = np.concatenate(predictions, axis=0)
+        predictions = np.concatenate(predictions, axis=0).argmax(-1)
         true_vals = np.concatenate(true_vals, axis=0)
+
+        classifications_df['texts'] = texts
+        classifications_df['labels'] = labels #true_vals
+        classifications_df['predictions'] = predictions
 
         # metrics = self.compute_metrics({'predictions':np.argmax(predictions, axis=-1),'label_ids':true_vals})
         metrics = self.compute_metrics(EvalPrediction(predictions=predictions, label_ids=true_vals))
         
-        return loss_val_avg, metrics
+        return loss_val_avg, metrics, classifications_df
         
     def train_evaluate_model(self, training_parameters):
         

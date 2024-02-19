@@ -4,7 +4,7 @@ import re
 from collections import Counter
 
 import pandas as pd
-from sklearn.utils import shuffle
+# from sklearn.utils import shuffle
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 import nltk
@@ -165,17 +165,19 @@ class DataHandler():
         frames_of_groups = [x.sample(processed_df_grouped.size().min(), random_state=self.random_state) for y, x in processed_df_grouped]
         self.df = pd.concat(frames_of_groups)
 
-        self.df = shuffle(self.df, random_state=self.random_state)
+        # self.df = shuffle(self.df, random_state=self.random_state)
+        self.df = self.df.sample(frac=1, random_state=self.random_state)
+        
         self.df.reset_index(drop=True, inplace=True)
 
         return self.df
 
     def split_train_test_dataset(self, train_size=0.8):
         # Training dataset
-        train_data = self.df[[self.get_text_column_name(), self.label_column]].sample(frac=train_size, random_state=self.random_state)
+        train_data = self.df[[self.text_column, self.get_text_column_name(), self.label_column]].sample(frac=train_size, random_state=self.random_state)
 
         # Testing dataset
-        test_data = self.df[[self.get_text_column_name(), self.label_column]].drop(train_data.index)
+        test_data = self.df[[self.text_column, self.get_text_column_name(), self.label_column]].drop(train_data.index)
 
         return train_data, test_data
 

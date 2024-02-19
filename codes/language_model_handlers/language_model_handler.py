@@ -14,7 +14,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 plt.rcParams['figure.dpi'] = 300
 
 class LanguageModelHandler():
-    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=128, random_state=42):
+    def __init__(self, model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=128, random_state=42):
         self.handler_type = None
         self.model_name = model_name
         self.tokenizer = None
@@ -25,6 +25,7 @@ class LanguageModelHandler():
         self.output_hidden_states = output_hidden_states
         self.random_state = random_state
         
+        self.processed_text_column = processed_text_column
         self.text_column = text_column
         self.label_column = label_column
 
@@ -113,24 +114,16 @@ class LanguageModelHandler():
 
     def compute_metrics(self, eval_pred):
         
-        if self.handler_type == 'hugging_face':
-            preds = eval_pred.predictions[0].argmax(-1) # you have to extract the logist from the outpout model if it is a tuple
-        
-        elif self.handler_type == 'pytorch':
-            preds = eval_pred.predictions.argmax(-1)
-        
-        elif self.handler_type == 'machine_learning':
-            preds = eval_pred.predictions
-
+        predictions = eval_pred.predictions
         labels = eval_pred.label_ids
         
         average_mode = 'weighted'
         
         return {
-            'accuracy': accuracy_score(labels, preds),
-            'precision': precision_score(labels, preds, average=average_mode),
-            'recall': recall_score(labels, preds, average=average_mode),
-            'f1': f1_score(labels, preds, average=average_mode)
+            'accuracy': accuracy_score(labels, predictions),
+            'precision': precision_score(labels, predictions, average=average_mode),
+            'recall': recall_score(labels, predictions, average=average_mode),
+            'f1': f1_score(labels, predictions, average=average_mode)
         }
     
     ### EMBEDDINGS METHODS
@@ -163,7 +156,8 @@ class LanguageModelHandler():
     
     def prepare_dataset(self, data):
 
-        input_ids, att_masks = self.tokenize_dataset(data[self.text_column].to_list())     
+        input_ids, att_masks = self.tokenize_dataset(data[self.text_column].to_list())
+
         Y = torch.LongTensor(data[self.label_column].to_list())
         
         #move on device (GPU)

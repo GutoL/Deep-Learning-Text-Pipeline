@@ -115,22 +115,24 @@ gc.collect()
 model_name = 'bert-base-uncased'
 
 ml_language_model_handler = MachineLearningLanguageModelHandler(model_name=model_name,
-                                              text_column=data_handler.get_text_column_name(),
+                                              text_column = data_handler.text_column,
+                                              processed_text_column=data_handler.get_text_column_name(),
                                               label_column=data_handler.label_column,
                                               batch_size=64,
                                               new_labels=new_labels,
                                               output_hidden_states=True)
 
-ml_language_model_handler.load_model(path=path+'saved_models/', name_file='bert-base-uncased')
+tokenizer, model = ml_language_model_handler.load_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
 
 # Set up training arguments
 training_args = {
     'dataset_train':train_data,
     'dataset_test':test_data,
-    'ml_model': 'random forest', # 'random forest', 'svm', 'decision tree', 'naive bayes', 'logistic regression'
+    'ml_model': 'gradient boosting', # 'random forest', 'svm', 'decision tree', 'naive bayes', 'logistic regression' 'gradient boosting'
     'seed':42
 }
 
 
-X_train = ml_language_model_handler.train_evaluate_model(training_args=training_args, iterations=1)
+results = ml_language_model_handler.train_evaluate_model(training_args=training_args, iterations=1)
+print('Testing results:', results) # '''
 

@@ -18,8 +18,8 @@ from codes.language_model_handlers.language_model_handler import LanguageModelHa
 
 class HuggingfaceLanguageModelHandler(LanguageModelHandler):
     
-    def __init__(self, model_name, new_labels, text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
-        super().__init__(model_name, new_labels, text_column, label_column, output_hidden_states, batch_size, text_size_limit)
+    def __init__(self, model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
+        super().__init__(model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states, batch_size, text_size_limit)
         self.handler_type == 'hugging_face'
         self.metric_accuracy = evaluate.load("accuracy")
         self.metric_precision = evaluate.load("precision")
@@ -138,6 +138,8 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
         self.model = self.trainer.model
 
         predictions, true_vals = self.evaluate_model(dataloader_val=self.prepare_dataset_for_embeddings(training_parameters['dataset_test']))
+
+        predictions = predictions[0].argmax(-1) # you have to extract the logist from the outpout model if it is a tuple
 
         metrics = self.compute_metrics((np.argmax(predictions, axis=-1), true_vals))
 

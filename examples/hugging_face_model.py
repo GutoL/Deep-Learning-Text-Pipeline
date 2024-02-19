@@ -187,30 +187,27 @@ language_model_manager.load_model(path=path+'saved_models/', name_file=model_nam
 
 #### Generating the Embeddings
 
-# embeddings = language_model_manager.calculate_embeddings_local_model_with_batches(data=test_data)
-# language_model_manager.plot_embeddings(embeddings_results=embeddings, labels=test_data[data_handler.label_column].to_list(), algorithm='PCA')
+#### Generating the Embeddings
+language_model_manager.calculate_embeddings_model_layers(test_data, only_last_layer=False)
 
 language_model_manager.plot_embeddings_layers(data=test_data, results_path=path+'results/embeddings/'+dataset_type+'/', filename=model_name+'_'+dataset_type+'.png',
-                                                  labels_to_replace=new_labels, algorithm='TSNE')
+                                                  labels_to_replace={0:'non '+dataset_type, 1: dataset_type}, algorithm='TSNE', sample_size=100, number_of_layers_to_plot=1)
 
 
 ####### INTEGRATED GRADIENTS
 
-exp_model = ExplainableTransformerPipeline(model=language_model_manager.model,
-                                           tokenizer=language_model_manager.tokenizer,
+exp_model = ExplainableTransformerPipeline(model=language_model_manager.model, tokenizer=language_model_manager.tokenizer,
                                            device=language_model_manager.device)
 
 # Using integrated gradients to plot the word importance for few samples
-samples = test_data[test_data[label_column]==0].sample(n=3, random_state=42)
+samples = test_data[test_data[label_column]==1].sample(n=3, random_state=10)
 
 print(data_handler.df.iloc[samples.index][data_handler.text_column].values)
+samples = samples[data_handler.get_text_column_name()]
 
-# https://towardsdatascience.com/interpreting-the-prediction-of-bert-model-for-text-classification-5ab09f8ef074
 
-for i, sample in enumerate(samples[data_handler.get_text_column_name()]):
-    # exp_model.explain(sample)
-    exp_model.visualize_word_importance_in_sentence(text=sample, id=i)
-    # exp_model.plot_word_importance(sample, bar=True)
+for i, sample in enumerate(samples):
+    exp_model.explain(sample, file_name=path+'results/xai/'+dataset_type+'/'+model_name+'_'+str(i)+'.png')
 
 
 # results = exp_model.get_most_impactful_words_for_dataset(dataset=test_data,

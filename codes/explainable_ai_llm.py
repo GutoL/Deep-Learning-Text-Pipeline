@@ -1,4 +1,6 @@
 # https://towardsdatascience.com/interpreting-the-prediction-of-bert-model-for-text-classification-5ab09f8ef074
+# https://levelup.gitconnected.com/huggingface-transformers-interpretability-with-captum-28e4ff4df234
+
 from transformers import pipeline 
 from transformers_interpret import SequenceClassificationExplainer
 import torch
@@ -34,31 +36,6 @@ class ExplainableTransformerPipeline():
         pred = self.__pipeline.model(inputs, attention_mask=torch.ones_like(inputs))
         return pred[position]
 
-    def visualize_word_importance_in_sentence(self, text:str, file_name:str=None):
-
-        word_attributions = self.__cls_explainer(text)
-
-        self.__cls_explainer.visualize(html_filepath=file_name)
-        
-    def visualize_word_importance(self, inputs: list, attributes: list, prediction:str):
-        """
-            Visualization method.
-            Takes list of inputs and correspondent attributs for them to visualize in a barplot
-        """
-        attr_sum = attributes.sum(-1)
-
-        attr = attr_sum / torch.norm(attr_sum)
-
-        word_importance = pd.Series(attr.cpu().numpy()[0],
-                         index = self.__pipeline.tokenizer.convert_ids_to_tokens(inputs.detach().cpu().numpy()[0],skip_special_tokens=False))
-
-        print(word_importance)
-
-        plt.title(prediction)
-        plt.show(word_importance.plot.barh(figsize=(10,20)))
-
-        return word_importance
-
     def __generate_inputs(self, text: str):
         """
             Convenience method for generation of input ids as list of torch tensors
@@ -85,91 +62,111 @@ class ExplainableTransformerPipeline():
 
         return text.strip()
 
-    ## LIME
-    def model_adapter(self, texts):
-
-        all_scores = []
-        batch_size = 64
-
-        for i in range(0, len(texts), batch_size):
-
-            batch = texts[i:i+batch_size]
-
-            # use bert encoder to tokenize text
-            encoded_input = self.__pipeline.tokenizer(batch,
-                              return_tensors='pt',
-                              padding=True,
-                              truncation=True,
-                              max_length=self.__pipeline.model.config.max_position_embeddings-2)
-
-            for key in encoded_input:
-                encoded_input[key] = encoded_input[key].to(self.__device)
-
-            output = self.__pipeline.model(**encoded_input)
-            # by default this model gives raw logits rather
-            # than a nice smooth softmax so we apply it ourselves here
-
-            scores = output[0].softmax(1).detach().cpu().numpy()
-
-            all_scores.extend(scores)
-
-        return np.array(all_scores)
-
-
-    # def get_most_impactful_words_lime(self, text, keyword, word_importance_results):
-
-    #     prediction = self.__pipeline(text)[0]['label']
-
-    #     if prediction == keyword:
-    #         print(text)
-    #         te = TextExplainer(n_samples=500, random_state=42)
-    #         te.fit(text, self.model_adapter)
-
-    #         graphic_explanation = te.explain_prediction(target_names=list(self.__pipeline.model.config.id2label.values()))
-
-    #         print(graphic_explanation.targets)
-
-    #         for element in graphic_explanation.targets:
-    #             for f in element.feature_weights.pos:
-    #                 for word in f.feature.split():
-    #                     if word in word_importance_results:
-    #                         word_importance_results[word] += f.weight
-    #                     else:
-    #                         word_importance_results[word] = f.weight
-    #             return word_importance_results, graphic_explanation
-    #     else:
-    #         return word_importance_results, None
-
-
+    
 
     ## INTEGRATED GRADIENTS
-    def explain(self, text: str):
-        """
-            Main entry method. Passes text through series of transformations and through the model.
-            Calls visualization method.
-        """
+
+    def calculate_word_scores_using_transformers_interpret(self, text):
+        word_attributions = self.__cls_explainer(text)
+        return word_attributions
+    
+    def visualize_word_importance_in_sentence(self, text:str, file_name:str=None):
+
+        word_attributions = self.calculate_word_scores_using_transformers_interpret(text)
+
+        self.__cls_explainer.visualize(html_filepath=file_name)
+
+    
+    def calculate_word_scores_using_captum(self, text):
         prediction = self.__pipeline.predict(text)
         inputs = self.__generate_inputs(text)
         baseline = self.generate_baseline(sequence_len = inputs.shape[1])
 
-        print('inputs', len(inputs[0]))
-        # print('se liga:', self.__pipeline.model.config.label2id)
+        # print(self.__pipeline.model.config.label2id)
 
-        lig = LayerIntegratedGradients(self.forward_func,
-                                       getattr(self.__pipeline.model, self.__name).embeddings)
+        lig = LayerIntegratedGradients(self.forward_func, getattr(self.__pipeline.model, self.__name).embeddings)
 
         # For some reason we need to swap the label dictionary
         labels_swaped = {v: k for k, v in self.__pipeline.model.config.id2label.items()}
 
-        attributes, delta = lig.attribute(inputs=inputs,
-                                  baselines=baseline,
-                                  target=labels_swaped[prediction[0]['label']],
-                                  return_convergence_delta=True)
+        word_attributions, delta = lig.attribute(inputs=inputs, baselines=baseline, target=labels_swaped[prediction[0]['label']], return_convergence_delta=True)
+        
+        return inputs, prediction, word_attributions, delta
 
-        self.visualize_word_importance(inputs, attributes, prediction)
+    def explain(self, text: str, file_name:str, bar:bool=True):
+        
+        inputs, prediction, word_attributions, delta = self.calculate_word_scores_using_captum(text)
+
+        words_list, scores_list = self.aggregate_subtokens_into_words(inputs, word_attributions)
+
+        scores_list = [np.mean(scores) for scores in scores_list]
+
+        if bar:
+            self.plot_word_scores_bar(words_list, scores_list, file_name)
+        else:
+            self.plot_colored_text(words_list, scores_list)
 
 
-    def join_tokens_into_words(self, token_tuples):
+    def aggregate_subtokens_into_words(self, inputs: list, word_attributions: list):
+        
+        attr_sum = word_attributions.sum(-1)
+
+        attr = attr_sum / torch.norm(attr_sum)
+
+        words = self.__pipeline.tokenizer.convert_ids_to_tokens(inputs.detach().cpu().numpy()[0], skip_special_tokens=True)
+        scores = attr.cpu().numpy()[0]
+
+        token_scores_list = [(word, score) for word, score in zip(words, scores)]
+        
+        if self.__name == 'roberta':
+            words_list, scores_list = self.combine_tokens_into_words_roberta(token_list=token_scores_list)
+
+        elif self.__name == 'bert':
+            words_list, scores_list = self.combine_tokens_into_words_bert(token_tuples=token_scores_list)
+          
+        return words_list, scores_list
+
+    def combine_tokens_into_words_roberta(self, token_list):
+        words = []
+        scores = []
+        current_word = ''
+        current_score_list = []
+
+        for token, score in token_list:
+            # Check if the token starts with 'Ġ'
+            if token.startswith('Ġ'):
+                # If the current_word is not empty, add it to the words list
+                if current_word:
+                    words.append(current_word)
+                    scores.append(current_score_list)
+                    current_word = ''  # Reset the current word
+                    current_score_list = []  # Reset the current score list
+
+                # Remove the 'Ġ' from the token and add it to the current word
+                current_word += token.lstrip('Ġ')
+                current_score_list.append(score)
+            else:
+                # Concatenate the token with the current word
+                current_word += token
+                current_score_list.append(score)
+
+        # Append the last word and its score list
+        if current_word:
+            words.append(current_word)
+            scores.append(current_score_list)
+
+        return words, scores
+
+    def combine_tokens_into_words_bert(self, token_tuples):
+        def combine_and_clean(words_list):
+            cleaned_words_list = []
+            for sublist in words_list:
+                combined_words = ''.join(sublist)
+                cleaned_sublist = combined_words.replace('##', '')
+                cleaned_words_list.append(cleaned_sublist)
+            return cleaned_words_list
+        
+
         self.tokens_to_exclude = ['[CLS]', '[SEP]']
         tokens_list = []
         scores_list = []
@@ -213,14 +210,15 @@ class ExplainableTransformerPipeline():
           tokens_list.append([last_token])
           scores_list.append([last_score])
 
-        return tokens_list, scores_list
+        return combine_and_clean(tokens_list), scores_list
 
 
     def __get_most_impactful_words_integrated_gradients(self, text_to_evaluate, threshold, keyword, results):
 
         word_attributions = self.__cls_explainer(text=text_to_evaluate)
+
         # print(self.__cls_explainer.predicted_class_name)
-        tokens_list, scores_list = self.join_tokens_into_words(word_attributions)
+        tokens_list, scores_list = self.combine_tokens_into_words_bert(word_attributions)
 
         new_word_attributions = []
         for i, tokens in enumerate(tokens_list):
@@ -237,41 +235,40 @@ class ExplainableTransformerPipeline():
 
         return results
 
-    def plot_vertical_bar(self, text, word_scores):
-        # Split the text into words
-        words = text.split()
+    def plot_word_scores_bar(self, words, scores, file_name):
+        # Set the color for the bars
+        color = '#5B2C6F'
 
-        # Create a vertical bar plot
-        fig, ax = plt.subplots(figsize=(8, 4))
-        bars = ax.bar(words, word_scores, color='#5B2C6F') # color='skyblue'
+        # Create a unique index for each word
+        word_indices = np.arange(len(words))
 
-        margin = 0.02
+        # Create a bar plot
+        plt.figure(figsize=(10, 6))  # Adjust the figure size if needed
+        bars = plt.bar(word_indices, scores, color=color)
 
-        for word, score, bar in zip(words, word_scores, bars):
-            if score >= 0:
-                ax.text(word, score + margin, f'{score:.2f}', ha='center', va='bottom', fontsize=10)
-            else:
-                ax.text(word, score - margin, f'{score:.2f}', ha='center', va='top', fontsize=10)
+        # Add word labels on x-axis
+        plt.xticks(word_indices, words)
 
-        # Rotate word labels by 45 degrees for readability
-        ax.set_xticklabels(words, rotation=45, ha='right')
+        # Add scores on top of each bar
+        for bar, score in zip(bars, scores):
+            plt.text(bar.get_x() + bar.get_width() / 2, 
+                    bar.get_height(), 
+                    str(str(round(score, 2))), 
+                    ha='center', 
+                    va='bottom')
 
-        # Set labels and title
-        ax.set_xlabel('Words')
-        ax.set_ylabel('Word Impact Scores')
-        # ax.set_title('Word Scores Vertical Bar Plot')
+        # Add labels and title
+        plt.xlabel('Words')
+        plt.ylabel('Word Importance Scores')
+        
+        # Rotate x-axis labels for better readability if needed
+        plt.xticks(rotation=45, ha='right')
 
-        # Adjust the position of the y-axis labels
-        ax.yaxis.set_label_coords(-0.1, 0.5)
+        # Save the plot
+        plt.tight_layout()  # Adjust layout to prevent clipping of labels
+        plt.savefig(file_name)  # Save the figure with the specified file name
+        plt.close()  # Close the plot to free up memory
 
-        ax.set_ylim([np.min(word_scores)-0.1, np.max(word_scores)+0.1])
-
-        # plt.grid(True, color = "grey", linewidth = "1")
-        plt.axhline(y=0, color='black', linestyle='-', linewidth="0.5")
-
-        # Display the plot
-        plt.tight_layout()
-        plt.show()
 
     def plot_colored_text(self, text, word_scores):
 
@@ -313,26 +310,27 @@ class ExplainableTransformerPipeline():
         plt.show()
 
 
-    def plot_word_importance(self, sentence, bar=True):
+    # def plot_word_importance(self, sentence, clean_text, bar=True):
+        
+    #     if clean_text:
+    #         sentence = self.__clean_text_for_explanation(sentence)
 
-        sentence = self.__clean_text_for_explanation(sentence)
+    #     word_attributions = self.__cls_explainer(text=sentence)
 
-        word_attributions = self.__cls_explainer(text=sentence)
+    #     print(word_attributions)
 
-        print(word_attributions)
+    #     tokens_list, scores_list = self.combine_tokens_into_words_bert(word_attributions)
 
-        tokens_list, scores_list = self.join_tokens_into_words(word_attributions)
+    #     scores_list = [np.mean(scores) for scores in scores_list]
 
-        scores_list = [np.mean(scores) for scores in scores_list]
+    #     print(scores_list)
 
-        print(scores_list)
-
-        if bar:
-            print(len(sentence.split()), len(scores_list))
-            self.plot_vertical_bar(sentence, scores_list)
-        else:
-            self.plot_colored_text(sentence, scores_list)
-            # self.plot_sentence(sentence)
+    #     if bar:
+    #         print(len(sentence.split()), len(scores_list))
+    #         self.plot_vertical_bar(sentence, scores_list)
+    #     else:
+    #         self.plot_colored_text(sentence, scores_list)
+    #         # self.plot_sentence(sentence)
 
 
     def get_most_impactful_words_for_dataset(self, dataset, column_text,

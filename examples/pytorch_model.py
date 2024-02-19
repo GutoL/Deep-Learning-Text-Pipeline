@@ -5,6 +5,8 @@ import pandas as pd
 from codes.data_handler import DataHandler
 from codes.exploratory_data_analysis import ExploratoryDataAnalysis
 from codes.language_model_handlers.pytorch_language_model_handler import PytorchLanguageModelHandler
+from codes.explainable_ai_llm import ExplainableTransformerPipeline
+
 
 import torch 
 import gc 
@@ -116,14 +118,15 @@ gc.collect()
 model_name='bert-base-uncased'
 
 language_model_manager = PytorchLanguageModelHandler(model_name=model_name,
-                                              text_column=data_handler.get_text_column_name(),
-                                              label_column=data_handler.label_column,
-                                              new_labels=new_labels,
-                                              output_hidden_states=True)
+                                                    text_column = data_handler.text_column,
+                                                    processed_text_column=data_handler.get_text_column_name(),
+                                                    label_column=data_handler.label_column,
+                                                    new_labels=new_labels,
+                                                    output_hidden_states=True)
 
 # Set up training arguments
 training_parameters = {
-    'learning_rate':1e-6,
+    'learning_rate':0.000001,
     # 'eps':1e-8,
     'betas':(0.9, 0.999),
     'weight_decay':0.01,
@@ -131,14 +134,49 @@ training_parameters = {
     'dataset_train':train_data,
     'dataset_test':test_data,
     'epochs':10,
-    'seed':42
+    'seed':42,
+    'repetitions':1
 }
 
-metrics, model = language_model_manager.train_evaluate_model(training_parameters=training_parameters)
+# metrics, model = language_model_manager.train_evaluate_model(training_parameters=training_parameters)
 
-language_model_manager.save_model(path=path+'saved_models/', name_file=model_name)# '''
+# language_model_manager.save_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
 
-# tokenizer, model = language_model_manager.load_model(path=path+'saved_models/', name_file=model_name)
+tokenizer, model = language_model_manager.load_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
+
+_, metrics, classifications_df = language_model_manager.evaluate_model(test_data)
+
+print(metrics)# '''
+
+# classifications_df.to_csv(path+'results/predictions/'+dataset_type+'/'+model_name+'.csv', index=False)
+
+
+#### Generating the Embeddings
+language_model_manager.calculate_embeddings_model_layers(test_data, only_last_layer=False)
 
 language_model_manager.plot_embeddings_layers(data=test_data, results_path=path+'results/embeddings/'+dataset_type+'/', filename=model_name+'_'+dataset_type+'.png',
-                                                  labels_to_replace=new_labels, algorithm='TSNE')
+                                                  labels_to_replace={0:'non '+dataset_type, 1: dataset_type}, algorithm='TSNE', sample_size=100, number_of_layers_to_plot=1)
+
+
+####### INTEGRATED GRADIENTS
+
+exp_model = ExplainableTransformerPipeline(model=language_model_manager.model, tokenizer=language_model_manager.tokenizer,
+                                           device=language_model_manager.device)
+
+# Using integrated gradients to plot the word importance for few samples
+samples = test_data[test_data[label_column]==1].sample(n=3, random_state=10)
+
+print(data_handler.df.iloc[samples.index][data_handler.text_column].values)
+samples = samples[data_handler.get_text_column_name()]
+
+
+for i, sample in enumerate(samples):
+    exp_model.explain(sample, file_name=path+'results/xai/'+dataset_type+'/'+model_name+'_'+str(i)+'.png')
+
+# results = exp_model.get_most_impactful_words_for_dataset(dataset=test_data,
+#                                                column_text=data_handler.get_text_column_name(),
+#                                                threshold=0.1,
+#                                                keyword=dataset_type,
+#                                                method='integrated_gradients',
+#                                                n=50)
+# results
