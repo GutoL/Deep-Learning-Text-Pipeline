@@ -2,8 +2,6 @@
 # https://www.intodeeplearning.com/bert-multiclass-text-classification/
 
 import torch
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler #, SequentialSampler
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score #, classification_report
 import numpy as np 
 from transformers import get_linear_schedule_with_warmup
 from torch.optim import AdamW

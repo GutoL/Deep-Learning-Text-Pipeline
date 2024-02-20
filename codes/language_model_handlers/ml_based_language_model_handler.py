@@ -13,7 +13,6 @@ from transformers import pipeline
 import numpy as np
 import torch
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from transformers import EvalPrediction
 
 from codes.language_model_handlers.language_model_handler import LanguageModelHandler

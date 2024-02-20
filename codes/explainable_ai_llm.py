@@ -12,8 +12,8 @@ import emoji
 import numpy as np
 from captum.attr import LayerIntegratedGradients
 from matplotlib.colorbar import ColorbarBase
-from IPython.display import display, HTML
 
+plt.rcParams['figure.dpi'] = 200
 
 class ExplainableTransformerPipeline():
     """Wrapper for Captum framework usage with Huggingface Pipeline"""
@@ -97,12 +97,14 @@ class ExplainableTransformerPipeline():
         
         inputs, prediction, word_attributions, delta = self.calculate_word_scores_using_captum(text)
 
+        print('prediction:', prediction)
+
         words_list, scores_list = self.aggregate_subtokens_into_words(inputs, word_attributions)
 
         scores_list = [np.mean(scores) for scores in scores_list]
 
         if bar:
-            self.plot_word_scores_bar(words_list, scores_list, file_name)
+            self.plot_word_scores_bar(words_list, scores_list, file_name, prediction[0]['label']+': '+str(round(prediction[0]['score']*100, 2))+'%')
         else:
             self.plot_colored_text(words_list, scores_list)
 
@@ -235,9 +237,10 @@ class ExplainableTransformerPipeline():
 
         return results
 
-    def plot_word_scores_bar(self, words, scores, file_name):
+    def plot_word_scores_bar(self, words, scores, file_name, title):
         # Set the color for the bars
         color = '#5B2C6F'
+        font_size = 15
 
         # Create a unique index for each word
         word_indices = np.arange(len(words))
@@ -247,19 +250,29 @@ class ExplainableTransformerPipeline():
         bars = plt.bar(word_indices, scores, color=color)
 
         # Add word labels on x-axis
-        plt.xticks(word_indices, words)
+        plt.xticks(word_indices, words, fontsize=font_size)
 
-        # Add scores on top of each bar
-        for bar, score in zip(bars, scores):
-            plt.text(bar.get_x() + bar.get_width() / 2, 
-                    bar.get_height(), 
-                    str(str(round(score, 2))), 
-                    ha='center', 
-                    va='bottom')
+        # Add scores on top or below each bar
+        for i, (bar, score) in enumerate(zip(bars, scores)):
+            if score >= 0:
+                plt.text(bar.get_x() + bar.get_width() / 2, 
+                        bar.get_height(), 
+                        str(round(score, 2)), 
+                        ha='center', 
+                        va='bottom',
+                        fontsize=font_size)
+            else:
+                plt.text(bar.get_x() + bar.get_width() / 2, 
+                        bar.get_height()-0.01, 
+                        str(round(score, 2)), 
+                        ha='center', 
+                        va='top',
+                        fontsize=font_size)
 
         # Add labels and title
-        plt.xlabel('Words')
-        plt.ylabel('Word Importance Scores')
+        plt.title(title, fontsize=font_size)
+        plt.xlabel('Words', fontsize=font_size)
+        plt.ylabel('Word Importance Scores', fontsize=font_size)
         
         # Rotate x-axis labels for better readability if needed
         plt.xticks(rotation=45, ha='right')
