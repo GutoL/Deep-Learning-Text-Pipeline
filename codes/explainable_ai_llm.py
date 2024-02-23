@@ -276,6 +276,7 @@ class ExplainableTransformerPipeline():
         
         # Rotate x-axis labels for better readability if needed
         plt.xticks(rotation=45, ha='right')
+        plt.ylim(min(scores)-0.1, max(scores)+0.1)
 
         # Save the plot
         plt.tight_layout()  # Adjust layout to prevent clipping of labels

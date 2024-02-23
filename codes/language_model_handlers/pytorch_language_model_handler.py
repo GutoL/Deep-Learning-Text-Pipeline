@@ -177,7 +177,7 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
                 train_loss_per_epoch.append(loss_train_total / (step_num + 1))
 
                 # Testing
-                loss_val_avg, metrics = self.evaluate_model(test_dataset=training_parameters['dataset_test'])
+                loss_val_avg, metrics, _ = self.evaluate_model(test_dataset=training_parameters['dataset_test'])
 
                 test_loss_per_epoch.append(loss_val_avg)
 
