@@ -181,13 +181,13 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
 
                 test_loss_per_epoch.append(loss_val_avg)
 
-                for m in metrics:
-                    if m in metrics_results:
-                        metrics_results[m].append(metrics[m])
-                    else:
-                        metrics_results[m] = [metrics[m]]
-                        
                 print('Test performance:', metrics)
+
+            for m in metrics:
+                if m in metrics_results:
+                    metrics_results[m].append(metrics[m])
+                else:
+                    metrics_results[m] = [metrics[m]]
 
         # epochs = range(1, epochs +1 )
         # fig, ax = plt.subplots()

@@ -1,6 +1,9 @@
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+
 class ExploratoryDataAnalysis():
 
-    def plot_text_size_distribution(self, dataframe, column_name):
+    def plot_text_size_distribution(self, dataframe, column_name, file_name=None):
         # Extract text from the specified column
         texts = dataframe[column_name]
 
@@ -16,7 +19,12 @@ class ExploratoryDataAnalysis():
         plt.grid(True)
         plt.show()
 
-    def generate_word_cloud(self, dataframe, column_name):
+        if file_name:
+            plt.savefig(file_name)
+        
+        plt.close()
+
+    def generate_word_cloud(self, dataframe, column_name, file_name=False):
         # Concatenate all texts in the specified column
         text_corpus = ' '.join(dataframe[column_name].astype(str))
 
@@ -29,3 +37,8 @@ class ExploratoryDataAnalysis():
         plt.axis('off')
         plt.title('Word Cloud')
         plt.show()
+
+        if file_name:
+            plt.savefig(file_name)
+        
+        plt.close()
