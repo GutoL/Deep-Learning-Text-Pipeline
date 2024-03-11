@@ -83,12 +83,14 @@ print(df[label_column].value_counts())
 preprocessing_setup = {
     'lower_case': True,
     'remove_emojis': False,
+    'remove_hashtags': False,
     'remove_stop_words': True,
     'remove_numbers': False,
     'remove_users': True,
     'remove_urls': True,
     'remove_non_text_characters': True,
-    'lemmatize': False
+    'lemmatize': False,
+    'expand_contractions': False
 }
 
 

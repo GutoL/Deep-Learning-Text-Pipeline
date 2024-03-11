@@ -23,7 +23,9 @@ class DataHandler():
         self.text_column = text_column
         self.processed_text_column = None
         self.label_column = label_column
-        self.number_of_labels = len(df[label_column].value_counts())
+
+        if label_column:
+            self.number_of_labels = len(df[label_column].value_counts())
 
         self.contractions_dict = { "ain't": "are not","'s":" is","aren't": "are not",
                      "can't": "cannot","can't've": "cannot have",
@@ -113,9 +115,13 @@ class DataHandler():
         for t in text.split(" "):
             # t = remove_words_with_euro(t)
 
+            if setup['remove_hashtags']:
+                t = '' if t.startswith('#') and len(t) > 1 else t
+
             if setup['remove_users']:
                 t = '' if t.startswith('@') and len(t) > 1 else t
                 # t = '@user' if t.startswith('@') and len(t) > 1 else t
+                
             if setup['remove_urls']:
                 t = '' if t.startswith('http') else t
                 # t = 'http' if t.startswith('http') else t
