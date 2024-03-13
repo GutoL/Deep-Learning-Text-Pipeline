@@ -8,7 +8,7 @@ from transformers import pipeline
 import gc
 
 class DataFrameModelHandler():
-    def __init__(self, model_name, path=None) -> None:
+    def __init__(self, model_name, path=None, negative_class_suffixe='no') -> None:
         
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(path+model_name)
@@ -21,10 +21,11 @@ class DataFrameModelHandler():
         self.pipeline = pipeline('text-classification', model=self.model,
                                 tokenizer=self.tokenizer, device=self.device)
 
+        self.negative_class_suffixe = negative_class_suffixe
         
     def __create_classification_column(self, df, class_name, classification_column='classification'):
         # Add a new column 'classification' with 0 if 'non-class' has lower probability, else 1
-        df[classification_column] = df.apply(lambda row: 0 if row['no '+class_name] > row[class_name] else 1, axis=1)
+        df[classification_column] = df.apply(lambda row: 0 if row[self.negative_class_suffixe+' '+class_name] > row[class_name] else 1, axis=1)
         return df
     
     def __data_loader(self, df, column, text_size_limit):
@@ -39,7 +40,8 @@ class DataFrameModelHandler():
                 yield text
             
                 
-    def classify_dataframe(self, df, original_text_column, text_column, extra_columns_to_save, result_file_name, batch_size, batch_size_to_save, class_name, text_size_limit=512):
+    def classify_dataframe(self, df, original_text_column, text_column, extra_columns_to_save, result_file_name, batch_size, batch_size_to_save, class_name, 
+                           text_size_limit=512, threshold=None):
         
         if os.path.isfile(result_file_name): # if the results file exists
             df_results = pd.read_csv(result_file_name)
@@ -57,6 +59,12 @@ class DataFrameModelHandler():
             result[original_text_column] = [df.iloc[i][original_text_column]]
             result[prediction[0]['label']] = [prediction[0]['score']]
             result[prediction[1]['label']] = [prediction[1]['score']]
+
+            # Check whether the positive class is greater than a value or not, if yes, set it to 1, otherwise set it to 0
+            if threshold:
+                label_index = 0 if (self.negative_class_suffixe.strip() not in prediction[0]['label']) else 1
+
+                result['classification_threshold'] = 1 if (prediction[label_index]['score'] > threshold) else 0
 
             df_results = pd.concat([df_results, pd.DataFrame.from_dict(result)])
 

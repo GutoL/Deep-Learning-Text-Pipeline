@@ -10,6 +10,8 @@ from transformers.trainer_pt_utils import get_parameter_names
 import pandas as pd
 from transformers import EvalPrediction
 
+import matplotlib.pyplot as plt
+
 from codes.language_model_handlers.language_model_handler import LanguageModelHandler
 
 class PytorchLanguageModelHandler(LanguageModelHandler):
@@ -132,29 +134,22 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
             train_loss_per_epoch = []
             test_loss_per_epoch = []
 
-
             for epoch_num in range(epochs):
                 print('Epoch: ', epoch_num + 1)
                 
                 self.model.train()
-
                 loss_train_total = 0
+                
+                for step_num, batch_data in enumerate(tqdm(dataloader_train, desc='Training')):
 
-                for step_num, batch_data in enumerate(tqdm(dataloader_train,desc='Training')):
-
-                    self.model.zero_grad()
-
-                    ##############
-                    # input_ids, attention_mask, labels = [data for data in batch_data] # data.to(self.device)
-                    ## output = self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-                    # output = self.model(input_ids=input_ids, attention_mask=attention_mask)
-                    ##############
+                    # self.model.zero_grad()
 
                     batch = tuple(b.to(self.device) for b in batch_data)
 
-                    inputs = {'input_ids':      batch[0],
-                            'attention_mask': batch[1],
-                            'labels':         batch[2],
+                    inputs = {
+                                'input_ids': batch[0], 
+                                'attention_mask': batch[1], 
+                                'labels': batch[2]
                             }
                     
                     outputs = self.model(**inputs)
@@ -165,10 +160,11 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
                     loss_train_total += loss.item()
 
                     # Backward pass
+                    optimizer.zero_grad()
                     loss.backward()
             
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-            
+
                     optimizer.step()
                     scheduler.step()
                     
@@ -181,7 +177,7 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
 
                 test_loss_per_epoch.append(loss_val_avg)
 
-                print('Test performance:', metrics)
+                print(f'Test performance after epoch {epoch_num}:', metrics)
 
             for m in metrics:
                 if m in metrics_results:
@@ -189,15 +185,15 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
                 else:
                     metrics_results[m] = [metrics[m]]
 
-        # epochs = range(1, epochs +1 )
-        # fig, ax = plt.subplots()
-        # ax.plot(epochs, train_loss_per_epoch,label ='Training loss')
-        # ax.plot(epochs, test_loss_per_epoch, label = 'Test loss' )
-        # ax.set_title('Training and Test loss')
-        # ax.set_xlabel('Epochs')
-        # ax.set_ylabel('Loss')
-        # ax.legend()
-        # plt.show()
+        epochs = range(1, epochs +1 )
+        fig, ax = plt.subplots()
+        ax.plot(epochs, train_loss_per_epoch,label ='Training loss')
+        ax.plot(epochs, test_loss_per_epoch, label = 'Test loss' )
+        ax.set_title('Training and Test loss')
+        ax.set_xlabel('Epochs')
+        ax.set_ylabel('Loss')
+        ax.legend()
+        plt.show()
 
         for metric in metrics_results:
             print(metric, np.mean(metrics_results[metric]))
