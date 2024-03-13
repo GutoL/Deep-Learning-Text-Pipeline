@@ -8,7 +8,7 @@ from transformers import pipeline
 import gc
 
 class DataFrameModelHandler():
-    def __init__(self, model_name, path=None, negative_class_suffixe='no') -> None:
+    def __init__(self, model_name, path=None, negative_class_prefix='no') -> None:
         
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(path+model_name)
@@ -21,7 +21,7 @@ class DataFrameModelHandler():
         self.pipeline = pipeline('text-classification', model=self.model,
                                 tokenizer=self.tokenizer, device=self.device)
 
-        self.negative_class_suffixe = negative_class_suffixe
+        self.negative_class_suffixe = negative_class_prefix
         
     def __create_classification_column(self, df, class_name, classification_column='classification'):
         # Add a new column 'classification' with 0 if 'non-class' has lower probability, else 1
