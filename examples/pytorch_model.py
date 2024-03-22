@@ -11,6 +11,10 @@ import torch
 import gc 
 from torch import nn
 
+import numpy as np
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+
 
 original_text_column = 'text'
 label_column = 'classification'
@@ -146,6 +150,14 @@ training_parameters = {
 tokenizer, model = language_model_manager.load_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
 
 _, metrics, classifications_df = language_model_manager.evaluate_model(test_data)
+
+y_real = np.array(classifications_df['labels'].to_list())
+y_pred = np.array(classifications_df['predictions'].to_list())
+
+labels = list(new_labels.values())
+disp = ConfusionMatrixDisplay.from_predictions(y_real, y_pred, display_labels=labels, xticks_rotation='vertical')
+# disp.plot()
+plt.show()
 
 print(metrics)# '''
 
