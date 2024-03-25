@@ -23,10 +23,10 @@ class DataFrameModelHandler():
 
         self.negative_class_suffixe = negative_class_prefix
         
-    def __create_classification_column(self, df, class_name, classification_column='classification'):
-        # Add a new column 'classification' with 0 if 'non-class' has lower probability, else 1
-        df[classification_column] = df.apply(lambda row: 0 if row[self.negative_class_suffixe+' '+class_name] > row[class_name] else 1, axis=1)
-        return df
+    # def __create_classification_column(self, df, class_name, classification_column='classification'):
+    #     # Add a new column 'classification' with 0 if 'non-class' has lower probability, else 1
+    #     df[classification_column] = df.apply(lambda row: 0 if row[self.negative_class_suffixe+' '+class_name] > row[class_name] else 1, axis=1)
+    #     return df
     
     def __data_loader(self, df, column, text_size_limit):
         column_index = list(df.columns).index(column)
@@ -40,7 +40,7 @@ class DataFrameModelHandler():
                 yield text
             
                 
-    def classify_dataframe(self, df, original_text_column, text_column, extra_columns_to_save, result_file_name, batch_size, batch_size_to_save, class_name, 
+    def classify_dataframe(self, df, original_text_column, text_column, extra_columns_to_save, result_file_name, batch_size, batch_size_to_save, 
                            text_size_limit=512, threshold=None):
         
         if os.path.isfile(result_file_name): # if the results file exists
@@ -57,20 +57,31 @@ class DataFrameModelHandler():
             result = {column:[df.iloc[i][column]] for column in extra_columns_to_save}
 
             result[original_text_column] = [df.iloc[i][original_text_column]]
-            result[prediction[0]['label']] = [prediction[0]['score']]
-            result[prediction[1]['label']] = [prediction[1]['score']]
+            
+            highest_value = 0
 
-            # Check whether the positive class is greater than a value or not, if yes, set it to 1, otherwise set it to 0
             if threshold:
-                label_index = 0 if (self.negative_class_suffixe.strip() not in prediction[0]['label']) else 1
+                result['classification_threshold'] = None
+            
+            for classes_pred in prediction:
+                result[classes_pred['label']] = classes_pred['score']
 
-                result['classification_threshold'] = 1 if (prediction[label_index]['score'] > threshold) else 0
+                if classes_pred['score'] > highest_value:
+                    highest_value = classes_pred['score']
+                    result['classification'] = classes_pred['label']
+            
+                    # Check whether the positive class is greater than a value or not, if yes, set it to 1, otherwise set it to 0
+                    if threshold and (highest_value >= threshold):
+                        result['classification_threshold'] = classes_pred['label']
 
             df_results = pd.concat([df_results, pd.DataFrame.from_dict(result)])
 
             if i % batch_size_to_save == 0 and i > 0:
-                self.__create_classification_column(df_results, class_name).to_csv(result_file_name, index=False)
+                # self.__create_classification_column(df_results, class_name).to_csv(result_file_name, index=False)
+                df_results.to_csv(result_file_name, index=False)
                                 
             i += 1
 
-        self.__create_classification_column(df_results, class_name).to_csv(result_file_name, index=False)#['label_match'].value_counts()
+        # self.__create_classification_column(df_results, class_name).to_csv(result_file_name, index=False)#['label_match'].value_counts()
+        df_results.to_csv(result_file_name, index=False)
+        

@@ -1,5 +1,5 @@
 import sys
-sys.path.append("../../GitHub/Deep-Learning-Text-Pipeline/")
+sys.path.append("../../../GitHub/Deep-Learning-Text-Pipeline/")
 
 from codes.language_model_handlers.data_frame_model_handler import DataFrameModelHandler
 from codes.data_handler import DataHandler
@@ -8,11 +8,12 @@ import pandas as pd
 import torch 
 import gc
 
-df = pd.read_csv('datasets/Euros/men/euro_2012_no_rt.csv')
+df = pd.read_csv('../datasets/Euros/men/euro_2012_no_rt.csv')
 
 model_name = 'bert-base-uncased' #'bert-base-uncased'
 text_column = 'text'
-dataset_type = 'homophobic'
+classification_type = 'multiclass'
+
 # Cleaning cache from GPU memory
 torch.cuda.empty_cache()
 gc.collect()
@@ -37,9 +38,9 @@ data_handler = DataHandler(df=df, text_column=text_column, label_column=None)
 
 # data_handler.preprocess(setup=preprocessing_setup)
 
-dataframe_classifier = DataFrameModelHandler(model_name=model_name, path='saved_models/'+dataset_type+'/', negative_class_prefix='no')
+dataframe_classifier = DataFrameModelHandler(model_name=model_name, path='../'+classification_type+'/saved_models/', negative_class_prefix='no')
 
 dataframe_classifier.classify_dataframe(df=data_handler.df, original_text_column=text_column, text_column=data_handler.get_text_column_name(),
                                         extra_columns_to_save=['id'],
-                                        result_file_name='results/'+dataset_type+'.csv', batch_size=32, 
-                                        batch_size_to_save=1000, class_name=dataset_type, threshold=0.85)
+                                        result_file_name=classification_type+'.csv', batch_size=32, 
+                                        batch_size_to_save=1000, threshold=None)
