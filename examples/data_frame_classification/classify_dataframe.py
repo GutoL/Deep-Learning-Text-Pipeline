@@ -8,7 +8,10 @@ import pandas as pd
 import torch 
 import gc
 
-df = pd.read_csv('../datasets/Euros/men/euro_2012_no_rt.csv')
+
+year = '2012'
+
+df = pd.read_csv('../datasets/Euros/men/euro_'+year+'_no_rt.csv')
 
 model_name = 'bert-base-uncased' #'bert-base-uncased'
 text_column = 'text'
@@ -40,7 +43,11 @@ data_handler = DataHandler(df=df, text_column=text_column, label_column=None)
 
 dataframe_classifier = DataFrameModelHandler(model_name=model_name, path='../'+classification_type+'/saved_models/', negative_class_prefix='no')
 
-dataframe_classifier.classify_dataframe(df=data_handler.df, original_text_column=text_column, text_column=data_handler.get_text_column_name(),
+dataframe_classifier.classify_dataframe(df=data_handler.df, 
+                                        original_text_column=text_column, 
+                                        text_column=data_handler.get_text_column_name(),
                                         extra_columns_to_save=['id'],
-                                        result_file_name=classification_type+'.csv', batch_size=32, 
-                                        batch_size_to_save=1000, threshold=None)
+                                        result_file_name=model_name+'_'+classification_type+'_'+year+'.csv',
+                                        batch_size=32, 
+                                        batch_size_to_save=1000, 
+                                        threshold=0.6)
