@@ -66,7 +66,7 @@ class DataHandler():
                      "you've": "you have"}
 
     # Function for expanding contractions
-    def expand_contractions(self, text):
+    def __expand_contractions(self, text):
         contractions_re=re.compile('(%s)' % '|'.join(self.contractions_dict.keys()))
 
         def replace(match):
@@ -91,6 +91,24 @@ class DataHandler():
         filtered_words = [word for word in words if word not in stop_words]
         # Join the filtered words back into a sentence
         return ' '.join(filtered_words)
+    
+    def __remove_random_symbols(self, text, symbols_to_remove):
+        # Construct the symbol pattern dynamically from the list of symbols
+        symbol_pattern = r'\b(?:' + '|'.join(re.escape(symbol) for symbol in symbols_to_remove) + r')+\b'
+        
+        # Use re.sub to replace matched symbol patterns with an empty string
+        text = re.sub(symbol_pattern, '', text)
+        
+        return text
+
+    def __remove_money_values(self, text):
+        # Define a regular expression pattern to match money values
+        pattern = r'\d+\$'
+        
+        # Use re.sub to replace matched patterns with an empty string
+        cleaned_string = re.sub(pattern, '', text)
+        
+        return cleaned_string
 
     def __preprocess_sentence(self, text, setup):
 
@@ -103,39 +121,41 @@ class DataHandler():
         if setup['remove_stop_words']:
             text = self.__remove_stop_words(text)
 
+        if setup['symbols_to_remove']:
+            text = self.__remove_random_symbols(text, setup['symbols_to_remove'])        
+
         if setup['remove_numbers']:
             text = text.replace('\d+', '') # Removing numbers
 
         if setup['expand_contractions']:
-            text = self.expand_contractions(text=text)
-            
+            text = self.__expand_contractions(text)
+
         # text = p.clean(text) #heavy cleaning
 
-        new_text = []
-        for t in text.split(" "):
-            # t = remove_words_with_euro(t)
+        if setup['remove_hashtags']:
+            hashtag_pattern = r'#\w+'
+            text = re.sub(hashtag_pattern, '', text)
 
-            if setup['remove_hashtags']:
-                t = '' if t.startswith('#') and len(t) > 1 else t
+        if setup['remove_users']:
+            username_pattern = r'@\w+'
+            text = re.sub(username_pattern, '', text)
 
-            if setup['remove_users']:
-                t = '' if t.startswith('@') and len(t) > 1 else t
-                # t = '@user' if t.startswith('@') and len(t) > 1 else t
-                
-            if setup['remove_urls']:
-                t = '' if t.startswith('http') else t
-                # t = 'http' if t.startswith('http') else t
+        if setup['remove_urls']:
+            url_pattern = r'http\S+'
+            text = re.sub(url_pattern, '', text)
 
-            new_text.append(t)
+            url_pattern = r'<url>'
+            text = re.sub(url_pattern, '', text)
 
-        new_text = " ".join(new_text)
+        if setup['remove_money_values']:
+            text = self.__remove_money_values(text)
 
         if setup['lemmatize']:
             wnl = WordNetLemmatizer()
-            list2 = nltk.word_tokenize(new_text)
-            new_text = ' '.join([wnl.lemmatize(words) for words in list2])
-
-        return new_text
+            list2 = nltk.word_tokenize(text)
+            text = ' '.join([wnl.lemmatize(words) for words in list2])
+        
+        return text
 
     def get_text_column_name(self):
         if self.processed_text_column:

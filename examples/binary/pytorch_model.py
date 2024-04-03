@@ -87,14 +87,17 @@ print(df[label_column].value_counts())
 preprocessing_setup = {
     'lower_case': True,
     'remove_emojis': False,
-    'remove_hashtags': False,
     'remove_stop_words': True,
     'remove_numbers': False,
     'remove_users': True,
     'remove_urls': True,
     'remove_non_text_characters': True,
     'lemmatize': False,
-    'expand_contractions': False
+    'expand_contractions': False,
+    'remove_hashtags': True,
+    'remove_money_values': False,
+    'remove_apostrophe_contractions': False,
+    'symbols_to_remove': False # ['&', '$', '*']
 }
 
 

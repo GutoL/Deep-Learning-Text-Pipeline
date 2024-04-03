@@ -79,9 +79,11 @@ preprocessing_setup = {
     'remove_non_text_characters': True,
     'lemmatize': False,
     'expand_contractions': False,
-    'remove_hashtags': True
+    'remove_hashtags': True,
+    'remove_money_values': False,
+    'remove_apostrophe_contractions': False,
+    'symbols_to_remove': False # ['&', '$', '*']
 }
-
 
 data_handler = DataHandler(df=df_hate_speech, text_column=original_text_column, label_column=label_column)
 
