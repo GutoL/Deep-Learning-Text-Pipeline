@@ -73,8 +73,11 @@ class DataHandler():
             return self.contractions_dict[match.group(0)]
         return contractions_re.sub(replace, text)
 
-    def __demojize_text(self, text):
-        return emoji.demojize(text)
+    def __remove_emojis(self, text):
+        return emoji.replace_emoji(text, replace='')
+    
+    def __replace_emojis_by_text(self, text, language='en'):
+        return emoji.demojize(text, language=language)
 
     def __remove_words_with_euro(self, input_string):
         # Define a regular expression pattern to match words containing 'euro'
@@ -109,6 +112,21 @@ class DataHandler():
         cleaned_string = re.sub(pattern, '', text)
         
         return cleaned_string
+    
+    def __remove_text_between_patterns(self, text, substring_1, substring_2):
+        while True:
+            start_index = text.find(substring_1)
+            if start_index == -1:  # If start substring not found, break the loop
+                break
+            
+            end_index = text.find(substring_2, start_index)
+            if end_index == -1:  # If end substring not found after start, break the loop
+                break
+            
+            # Remove text between start and end substrings, inclusive
+            text = text[:start_index] + text[end_index + len(substring_2):]
+    
+        return text
 
     def __preprocess_sentence(self, text, setup):
 
@@ -116,7 +134,10 @@ class DataHandler():
             text = text.lower()
 
         if setup['remove_emojis']:
-            text = self.__demojize_text(text)
+            text = self.__remove_emojis(text)
+        
+        if setup['replace_by_text'] == True and setup['remove_emojis'] == False:
+            text = self.__replace_emojis_by_text(text)
 
         if setup['remove_stop_words']:
             text = self.__remove_stop_words(text)
@@ -131,6 +152,10 @@ class DataHandler():
             text = self.__expand_contractions(text)
 
         # text = p.clean(text) #heavy cleaning
+
+        if setup['remove_between_substrings']:
+            for substring_1, substring_2 in setup['remove_between_substrings']:
+                text = self.__remove_text_between_patterns(text, substring_1, substring_2)
 
         if setup['remove_hashtags']:
             hashtag_pattern = r'#\w+'

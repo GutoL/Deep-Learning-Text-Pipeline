@@ -41,7 +41,7 @@ class DataFrameModelHandler():
             
                 
     def classify_dataframe(self, df, original_text_column, text_column, extra_columns_to_save, result_file_name, batch_size, batch_size_to_save, 
-                           text_size_limit=512, threshold=None):
+                           text_size_limit=512, threshold=None, include_text=True):
         
         if os.path.isfile(result_file_name): # if the results file exists
             df_results = pd.read_csv(result_file_name)
@@ -55,8 +55,9 @@ class DataFrameModelHandler():
         for prediction in tqdm(self.pipeline(self.__data_loader(df, text_column, text_size_limit), batch_size=batch_size, return_all_scores=True), total=df.shape[0]):
             
             result = {column:[df.iloc[i][column]] for column in extra_columns_to_save}
-
-            result[original_text_column] = [df.iloc[i][original_text_column]]
+            
+            if include_text:
+                result[original_text_column] = [df.iloc[i][original_text_column]]
             
             highest_value = 0
 
