@@ -136,7 +136,7 @@ class DataHandler():
         if setup['remove_emojis']:
             text = self.__remove_emojis(text)
         
-        if setup['replace_by_text'] == True and setup['remove_emojis'] == False:
+        if setup['replace_emojis_by_text'] == True and setup['remove_emojis'] == False:
             text = self.__replace_emojis_by_text(text)
 
         if setup['remove_stop_words']:
