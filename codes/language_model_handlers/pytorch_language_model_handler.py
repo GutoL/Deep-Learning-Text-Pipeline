@@ -86,13 +86,16 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
         return loss_val_avg, metrics, classifications_df
         
     def train_evaluate_model(self, training_parameters):
-        
+
         # seed_val = training_parameters['seed']
         # random.seed(seed_val)
         # np.random.seed(seed_val)
         # torch.manual_seed(seed_val)
         # torch.cuda.manual_seed_all(seed_val)
-        
+
+        path_to_model = '/'.join(training_parameters['model_file_name'].split('/')[:-1])+'/'
+        model_name_file = training_parameters['model_file_name'].split('/')[-1]
+
         self.num_labels = len(training_parameters['dataset_train'][self.label_column].value_counts())
 
         dataloader_train = self.prepare_dataset(training_parameters['dataset_train'])
@@ -133,9 +136,14 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
             
             train_loss_per_epoch = []
             test_loss_per_epoch = []
+            
+            ## Start the training
+            best_val_loss = float('inf')
 
             for epoch_num in range(epochs):
-                print('Epoch: ', epoch_num + 1)
+                epoch_num = epoch_num + 1
+
+                print('Epoch: ', epoch_num)
                 
                 self.model.train()
                 loss_train_total = 0
@@ -179,6 +187,15 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
 
                 print(f'Test performance after epoch {epoch_num}:', metrics)
 
+                # Save the model if it has the best validation loss
+                if (loss_val_avg < best_val_loss) and training_parameters['model_file_name']:
+                    best_val_loss = loss_val_avg
+                    self.save_model(path=path_to_model, name_file=model_name_file)
+
+                    fp = open(path_to_model+model_name_file+'/epoch_number.txt', "w")
+                    fp.write(str(epoch_num))
+                    fp.close()
+
             for m in metrics:
                 if m in metrics_results:
                     metrics_results[m].append(metrics[m])
@@ -198,4 +215,4 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
         for metric in metrics_results:
             print(metric, np.mean(metrics_results[metric]))
 
-        return metrics_results, self.model
+        return metrics_results, self.model # '''

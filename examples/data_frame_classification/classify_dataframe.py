@@ -1,5 +1,5 @@
 import sys
-sys.path.append("../../../GitHub/Deep-Learning-Text-Pipeline/")
+sys.path.append("../../")
 
 from codes.language_model_handlers.data_frame_model_handler import DataFrameModelHandler
 from codes.data_handler import DataHandler

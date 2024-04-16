@@ -19,59 +19,88 @@ from sklearn.utils import shuffle
 # ---------------------------------------------------------------------------
 ##### Reading the data set
 
+## Local
+path = '' 
+datasets_path = path+'../datasets/'
 
-path = '' # Local
-# path = 'drive/My Drive/hate_speech/datasets/manually_coded/' # Colab
+# ## Colab
+# path = 'drive/My Drive/hate_speech/'
+# datasets_path = path+'datasets/'
 
+random_state = 42
 
-dataset_types = ['homophobic', 'racism', 'sexism']
+dataset_type = 'sexism'
 
-files_names = {
-    'homophobic': 'homophobia.xlsx',
-    'racism': 'Racism.xlsx',
-    'sexism' : 'sexism.xlsx'
-}
-
-original_text_column = 'data_text'
+text_column = 'text'
 label_column = 'label'
 
-df_hate_speech = pd.DataFrame()
+# ----------------------------------------------------------------------------------------------------------------------------------------
+if dataset_type == 'sexism':
+    GPT_file_name = datasets_path+'GPT_and_manually_coded/Labelled_Dataset_Sexism_Against_Women_and_Feminine_Slurs_Euros.xlsx'
+    tab_true_positive = 'TP-FS-SW'
+    tab_false_positive = 'FP-FS-SW'
+    tab_true_negative = 'ABT-FS-SW'
+    
+    hate_speech_df  = pd.read_excel(datasets_path+'manually_coded/sexism.xlsx')
+    
 
-new_labels = {0: 'non-hate-speech'}
+elif dataset_type == 'homophobia':
+    GPT_file_name = datasets_path+'GPT_and_manually_coded/Labelled-Dataset-Homophobia-Homophobic_Slurs.xlsx'
+    tab_true_positive = 'TP-HP'
+    tab_false_positive = 'FP-HP'
+    tab_true_negative = 'About'
 
-for i, hate_speech_type in enumerate(files_names):
-    i += 1
-    if hate_speech_type in dataset_types:
-        hate_df = pd.read_excel(path+'../datasets/'+files_names[hate_speech_type])
-        hate_df[label_column] = [i]*hate_df.shape[0]
-        df_hate_speech = pd.concat([df_hate_speech, hate_df])
-        new_labels[i] = hate_speech_type
+    hate_speech_df  = pd.read_excel(datasets_path+'manually_coded/homophobia.xlsx')
 
-df_non_hate_speech = pd.read_csv(path+'../datasets/'+'non_hate_speech.csv')[original_text_column].to_frame()
 
-df_non_hate_speech = df_non_hate_speech.head(df_hate_speech.shape[0])
+elif dataset_type == 'ableism':
+    GPT_file_name = datasets_path+'GPT_and_manually_coded/Labelled_Dataset_Ableism_EUROS.xlsx'
+    tab_true_positive = 'TP-AB-AS'
+    tab_false_positive = 'FP-AB-AS'
+    tab_true_negative = 'About'
 
-df_non_hate_speech[label_column] = [0]*df_non_hate_speech.shape[0]
+    hate_speech_df  = pd.read_excel(datasets_path+'manually_coded/ableism.xlsx')
 
-df_hate_speech = pd.concat([df_hate_speech, df_non_hate_speech])
+# ----------------------------------------------------------------------------------------------------------------------------------------
 
-text_column = original_text_column
+# Reading only manually labelled datasets
+hate_speech_df[label_column] = [1]*hate_speech_df.shape[0]
 
-df_hate_speech.dropna(subset=[original_text_column], inplace=True)
+non_hate_speech_df = pd.read_csv(datasets_path+'manually_coded/non_hate_speech.csv')
+non_hate_speech_df[label_column] = [0]*non_hate_speech_df.shape[0]
 
-df_hate_speech = df_hate_speech.sample(frac=1, random_state=42)
+# Reading GPT + manually labelled datasets
+gpt_dataframes = pd.read_excel(GPT_file_name, sheet_name=[tab_true_positive, tab_false_positive, tab_true_negative])
 
-df_hate_speech.reset_index(drop=True, inplace=True)
+true_positive_gpt = gpt_dataframes[tab_true_positive]
+false_positive_gpt = gpt_dataframes[tab_false_positive]
+true_negative_gpt = gpt_dataframes[tab_true_negative]
 
-print(df_hate_speech[label_column].value_counts())
+true_positive_gpt[label_column] = [1]*true_positive_gpt.shape[0]
+true_negative_gpt[label_column] = [0]*true_negative_gpt.shape[0]
+false_positive_gpt[label_column] = [0]*false_positive_gpt.shape[0]
 
- 
+# Putting all toghether
+hate_speech_df = pd.concat([hate_speech_df[[text_column, label_column]], true_positive_gpt[[text_column, label_column]]], axis=0)
+
+non_hate_speech_df = pd.concat([non_hate_speech_df[[text_column, label_column]], true_negative_gpt[[text_column, label_column]], false_positive_gpt[[text_column, label_column]]], axis=0)
+
+hate_speech_df = pd.concat([hate_speech_df, non_hate_speech_df], axis=0)
+
+hate_speech_df = hate_speech_df.sample(frac=1, random_state=random_state) # shuffling
+
+print(hate_speech_df[label_column].value_counts())
+
+# Defining the output labels to the model
+new_labels = {0: 'non-'+dataset_type, 1: dataset_type}
+
 # Data Handler
 # ---------------------------------------------------------------------------
 
 preprocessing_setup = {
     'lower_case': True,
-    'remove_emojis': False,
+    'remove_emojis': True,
+    'replace_emojis_by_text': False,
     'remove_stop_words': True,
     'remove_numbers': False,
     'remove_users': True,
@@ -82,10 +111,12 @@ preprocessing_setup = {
     'remove_hashtags': True,
     'remove_money_values': False,
     'remove_apostrophe_contractions': False,
-    'symbols_to_remove': False # ['&', '$', '*']
+    'symbols_to_remove': False, # ['&', '$', '*']
+    'remove_between_substrings': None # [('_x0','d_')]
 }
 
-data_handler = DataHandler(df=df_hate_speech, text_column=original_text_column, label_column=label_column)
+
+data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column)
 
 data_handler.preprocess(setup=preprocessing_setup)
 
@@ -97,6 +128,8 @@ data_handler.unsample()
 
 # print(data_handler.get_top_words(100))
 # print(data_handler.get_top_words_tfidf(100))
+
+print(data_handler.df[label_column].value_counts())
 
 train_data, test_data = data_handler.split_train_test_dataset()
 
@@ -111,7 +144,7 @@ print('total of data to train and test:', train_data.shape[0]+test_data.shape[0]
 torch.cuda.empty_cache()
 gc.collect()
 
-model_name = 'cardiffnlp/twitter-roberta-base-offensive' #'cardiffnlp/twitter-roberta-base-offensive' #'roberta-base' #'bert-base-uncased'
+model_name = 'FacebookAI/roberta-base' #'cardiffnlp/twitter-roberta-base-offensive' #'roberta-base' #'bert-base-uncased'
 
 print('*** Model:', model_name)
 
@@ -132,16 +165,15 @@ training_parameters = {
     'loss_function':nn.CrossEntropyLoss(),
     'dataset_train':train_data,
     'dataset_test':test_data,
-    'epochs':20,
-    'seed':42,
-    'repetitions':1
+    'epochs':10,
+    'seed':random_state,
+    'repetitions':1,
+    'model_file_name': path+'saved_models/'+model_name
 }
 
 metrics, model = language_model_manager.train_evaluate_model(training_parameters=training_parameters)
 
-language_model_manager.save_model(path=path+'saved_models/', name_file=model_name)
-
-# tokenizer, model = language_model_manager.load_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
+# language_model_manager.save_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
 
 _, metrics, classifications_df = language_model_manager.evaluate_model(test_data)
 
