@@ -3,7 +3,7 @@ sys.path.append("../../")
 
 import pandas as pd
 from codes.data_handler import DataHandler
-from codes.exploratory_data_analysis import ExploratoryDataAnalysis
+from codes.exploratory_data_analysis import plot_text_size_distribution, generate_word_cloud
 from codes.language_model_handlers.huggingface_language_model_handler import HuggingfaceLanguageModelHandler
 from codes.explainable_ai_llm import ExplainableTransformerPipeline
 
@@ -101,9 +101,8 @@ data_handler = DataHandler(df=df, text_column=original_text_column, label_column
 
 data_handler.preprocess(setup=preprocessing_setup)
 
-# exploratory_data_analysis = ExploratoryDataAnalysis()
-# exploratory_data_analysis.plot_text_size_distribution(data_handler.df, data_handler.get_text_column_name())
-# exploratory_data_analysis.generate_word_cloud(data_handler.df, data_handler.get_text_column_name())
+# plot_text_size_distribution(data_handler.df, data_handler.get_text_column_name())
+# generate_word_cloud(data_handler.df, data_handler.get_text_column_name())
 
 data_handler.unsample()
 

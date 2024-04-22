@@ -10,6 +10,8 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import colorcet as cc
+
 
 plt.rcParams['figure.dpi'] = 300
 
@@ -230,7 +232,7 @@ class LanguageModelHandler():
                     test_hidden_states = tuple(torch.cat([layer_hidden_state_all, layer_hidden_state_batch.cpu()]) 
                                             for layer_hidden_state_all, layer_hidden_state_batch in zip(test_hidden_states, hidden_states))
         
-        return test_hidden_states, test_masks, test_ys
+        return {'hidden_states':test_hidden_states, 'masks':test_masks, 'ys':test_ys}
     
     def calculate_average_embeddings(self, hidden_states, masks, layers_ids):
         all_averaged_layer_hidden_states = {}
@@ -257,8 +259,12 @@ class LanguageModelHandler():
 
             data = reduced_data
         
-        test_hidden_states, test_masks, test_ys = self.calculate_embeddings_model_layers(data, only_last_layer=False)
-        
+        embeddings = self.calculate_embeddings_model_layers(data, only_last_layer=False)
+                
+        test_hidden_states = embeddings['hidden_states']
+        test_masks = embeddings['masks']
+        test_ys = embeddings['ys']
+
         layers_to_visualize = [] # [0,1,10,11]
 
         for x in range(number_of_layers_to_plot):
@@ -280,12 +286,16 @@ class LanguageModelHandler():
         
         num_layers = len(all_averaged_layer_hidden_states)
         
-        fig = plt.figure(figsize=(24, (num_layers/4)*6)) #each subplot of size 6x6
-        ax = [fig.add_subplot(int(num_layers/2), num_layers*2, i+1) for i in range(num_layers)]
+        plot_size_factor = 5
+        
+        fig = plt.figure(figsize=((plot_size_factor*num_layers*2), plot_size_factor+2))
+        ax = [fig.add_subplot(int(num_layers/2), num_layers, i+1) for i in range(num_layers)]
 
         if type(ys) != list:
             ys = ys.numpy().reshape(-1)
         
+        ys = [y.capitalize().replace('_',' ') for y in ys]
+
         for i, layer_i in enumerate(all_averaged_layer_hidden_states): #range(hidden_states):
             
             layer_dim_reduced_vectors = self.reduce_embeddings_dimentionality(all_averaged_layer_hidden_states[layer_i].numpy(), algorithm=algorithm)
@@ -294,17 +304,20 @@ class LanguageModelHandler():
             
             # df.label = df.label.astype(int)
 
-            sns.scatterplot(data=df, x='x', y='y', hue='label', ax=ax[i])
+            sns.scatterplot(data=df, x='x', y='y', hue='label', ax=ax[i], palette=sns.color_palette(cc.glasbey, n_colors=self.num_labels))
             # fig.suptitle(f"{title}: epoch {epoch}")
             ax[i].set_title(f"layer {layer_i+1}")
             
             # Removing axis values
             ax[i].get_xaxis().set_visible(False)
             ax[i].get_yaxis().set_visible(False)
+            ax[i].legend([],[], frameon=False)
 
         print('visualize_layerwise_embeddings for', results_path+filename)
         
-        # plt.legend(bbox_to_anchor=(1.04, 0.5), borderaxespad=0)
+        plt.legend(bbox_to_anchor=(1, 0), loc="lower right", borderaxespad=0, bbox_transform=fig.transFigure, ncol=3)
+        # plt.legend(bbox_to_anchor=(1, 0), loc="lower right", bbox_transform=fig.transFigure, ncol=3)
+        
         plt.savefig(results_path+filename, format='png', pad_inches=0) # f'results/embeddings/{title}.png'
 
 

@@ -3,10 +3,8 @@ sys.path.append("../../../GitHub/Deep-Learning-Text-Pipeline/")
 
 import pandas as pd
 from codes.data_handler import DataHandler
-from codes.exploratory_data_analysis import ExploratoryDataAnalysis
-from codes.language_model_handlers.huggingface_language_model_handler import HuggingfaceLanguageModelHandler
+from codes.exploratory_data_analysis import plot_text_size_distribution, generate_word_cloud
 from codes.language_model_handlers.pytorch_language_model_handler import PytorchLanguageModelHandler
-from codes.language_model_handlers.ml_based_language_model_handler import MachineLearningLanguageModelHandler
 from codes.explainable_ai_llm import ExplainableTransformerPipeline
 
 
@@ -120,9 +118,8 @@ data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_col
 
 data_handler.preprocess(setup=preprocessing_setup)
 
-# exploratory_data_analysis = ExploratoryDataAnalysis()
-# exploratory_data_analysis.plot_text_size_distribution(data_handler.df, data_handler.get_text_column_name())
-# exploratory_data_analysis.generate_word_cloud(data_handler.df, data_handler.get_text_column_name())
+# plot_text_size_distribution(data_handler.df, data_handler.get_text_column_name())
+# generate_word_cloud(data_handler.df, data_handler.get_text_column_name())
 
 data_handler.unsample()
 
@@ -183,13 +180,11 @@ print(metrics)# '''
 
 #### Generating the Embeddings
 
-# embeddings = language_model_manager.calculate_embeddings_local_model_with_batches(data=test_data)
-# language_model_manager.plot_embeddings(file_name=path+'results/embeddings/'+dataset_type+'_'+model_name+'.png',
-#                                         embeddings_results=embeddings, labels=test_data[data_handler.label_column].to_list(), 
-#                                         algorithm='PCA')
+# embeddings = language_model_manager.calculate_embeddings_model_layers(data=test_data, only_last_layer=True)
+# print(embeddings['hidden_states'][0].shape)
 
 # language_model_manager.plot_embeddings_layers(data=test_data, results_path=path+'results/embeddings/'+dataset_type+'/', filename=model_name.replace('/','-')+'_'+dataset_type+'.png',
-#                                                   labels_to_replace={0:'non '+dataset_type, 1: dataset_type}, algorithm='TSNE', sample_size=100, number_of_layers_to_plot=1)
+#                                                   labels_to_replace=new_labels, algorithm='TSNE', sample_size=100, number_of_layers_to_plot=1)
 
 ####### INTEGRATED GRADIENTS
 
