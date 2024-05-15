@@ -1,4 +1,4 @@
-# Text Classification Pipeline with Machine Learning Models
+# Text Classification Pipeline with Deep Learning Models
 
 ## Overview
 
