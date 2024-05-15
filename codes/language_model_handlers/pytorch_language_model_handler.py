@@ -34,8 +34,8 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
         
         # classifications_df = pd.DataFrame(test_dataset[self.text_column].to_list(), columns=[self.text_column])
         classifications_df = pd.DataFrame()
-
-        dataloader_test = self.prepare_dataset(test_dataset)
+        
+        dataloader_test = self.prepare_dataset(test_dataset, shuffle=False)
 
         self.model.eval()
     
@@ -45,14 +45,20 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
         texts = []
         labels = []
 
+        j = 0
         for batch in dataloader_test:
             
-            batch = tuple(b.to(self.device) for b in batch)            
-
+            batch = tuple(b.to(self.device) for b in batch)       
+            
             for i in range(len(batch[0])):
-                text = [token for token in self.tokenizer.decode(batch[0][i], skip_special_tokens=True).split()] # removing special tokens from BERT-based model
-                texts.append(' '.join(text))
+                
+                # text = [token for token in self.tokenizer.decode(batch[0][i], skip_special_tokens=True).split()] # removing special tokens from BERT-based model
+                # texts.append(' '.join(text))
+                texts.append(test_dataset.iloc[j][self.text_column])                
+
                 labels.append(batch[2][i].cpu().numpy())
+
+                j += 1
 
             inputs = {'input_ids':      batch[0],
                       'attention_mask': batch[1],
@@ -98,7 +104,7 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
 
         self.num_labels = len(training_parameters['dataset_train'][self.label_column].value_counts())
 
-        dataloader_train = self.prepare_dataset(training_parameters['dataset_train'])
+        dataloader_train = self.prepare_dataset(training_parameters['dataset_train'], shuffle=True)
         
         epochs = training_parameters['epochs']
 

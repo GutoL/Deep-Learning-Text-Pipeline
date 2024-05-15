@@ -95,21 +95,24 @@ class LanguageModelHandler():
     def save_model(self, path, name_file):
         name_file = name_file.replace('/','-')
         
-        # Save tokenizer
+        ## Save tokenizer
         self.tokenizer.save_pretrained(path+name_file)
-        # Save model
-        model_path = os.path.join(path, name_file, name_file+'.pth')
-        torch.save(self.model, model_path)
+
+        ## Save model
+        # model_path = os.path.join(path, name_file, name_file+'.pth')
+        # torch.save(self.model, model_path)
+        self.model.save_pretrained(path+name_file)
         
 
     def load_model(self, path, name_file):
         name_file = name_file.replace('/','-')
         
-        # Load tokenizer
+        ## Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(path+name_file)
-        # Load Model
-        # self.model = AutoModelForSequenceClassification.from_pretrained(path+name_file)
-        self.model = torch.load(path+name_file+'/'+name_file+'.pth')
+        
+        ## Load Model
+        self.model = AutoModelForSequenceClassification.from_pretrained(path+name_file)
+        # self.model = torch.load(path+name_file+'/'+name_file+'.pth')
         self.model.to(self.device)
 
         return self.tokenizer, self.model
@@ -156,20 +159,20 @@ class LanguageModelHandler():
         return encoded_dict['input_ids'], encoded_dict['attention_mask']
     
     
-    def prepare_dataset(self, data):
+    def prepare_dataset(self, data, shuffle=True):
 
         input_ids, att_masks = self.tokenize_dataset(data[self.text_column].to_list())
 
         Y = torch.LongTensor(data[self.label_column].to_list())
         
-        #move on device (GPU)
+        # move on device (GPU)
         input_ids = input_ids.to(self.device)
         att_masks = att_masks.to(self.device)
         Y = Y.to(self.device)
         
         dataset = TensorDataset(input_ids, att_masks, Y)
-        sampler = RandomSampler(dataset)
-        data_loader = DataLoader(dataset, sampler=sampler, batch_size=self.batch_size)
+
+        data_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=shuffle)
 
         return data_loader
 

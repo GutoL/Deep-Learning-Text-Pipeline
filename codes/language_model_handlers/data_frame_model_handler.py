@@ -3,7 +3,7 @@ import os
 import pandas as pd
 from tqdm import tqdm
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from transformers import pipeline
 import gc
 
@@ -13,7 +13,9 @@ class DataFrameModelHandler():
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(path+model_name)
         # Load Model
-        self.model = torch.load(path+model_name+'/'+model_name+'.pth')
+        # self.model = torch.load(path+model_name+'/'+model_name+'.pth')
+        self.model = AutoModelForSequenceClassification.from_pretrained(path+model_name)
+
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
@@ -29,6 +31,7 @@ class DataFrameModelHandler():
     #     return df
     
     def __data_loader(self, df, column, text_size_limit):
+        
         column_index = list(df.columns).index(column)
         
         for row in df.values:
@@ -50,39 +53,43 @@ class DataFrameModelHandler():
         else:
             df_results = pd.DataFrame(columns=list(self.model.config.id2label.values()))
         
-        i = 0
 
-        for prediction in tqdm(self.pipeline(self.__data_loader(df, text_column, text_size_limit), batch_size=batch_size, return_all_scores=True), total=df.shape[0]):
-            
-            result = {column:[df.iloc[i][column]] for column in extra_columns_to_save}
-            
-            if include_text:
-                result[original_text_column] = [df.iloc[i][original_text_column]]
-            
-            highest_value = 0
+        if df.shape[0] > 0:
+            i = 0
 
-            if threshold:
-                result['classification_threshold'] = None
-            
-            for classes_pred in prediction:
-                result[classes_pred['label']] = classes_pred['score']
+            for prediction in tqdm(self.pipeline(self.__data_loader(df, text_column, text_size_limit), batch_size=batch_size, return_all_scores=True), total=df.shape[0]):
+                
+                result = {column:[df.iloc[i][column]] for column in extra_columns_to_save}
+                
+                if include_text:
+                    result[original_text_column] = [df.iloc[i][original_text_column]]
+                
+                highest_value = 0
 
-                if classes_pred['score'] > highest_value:
-                    highest_value = classes_pred['score']
-                    result['classification'] = classes_pred['label']
-            
-                    # Check whether the positive class is greater than a value or not, if yes, set it to 1, otherwise set it to 0
-                    if threshold and (highest_value >= threshold):
-                        result['classification_threshold'] = classes_pred['label']
+                if threshold:
+                    result['classification_threshold'] = None
+                
+                for classes_pred in prediction:
+                    result[classes_pred['label']] = classes_pred['score']
 
-            df_results = pd.concat([df_results, pd.DataFrame.from_dict(result)])
+                    if classes_pred['score'] > highest_value:
+                        highest_value = classes_pred['score']
+                        result['classification'] = classes_pred['label']
+                
+                        # Check whether the positive class is greater than a value or not, if yes, set it to 1, otherwise set it to 0
+                        if threshold and (highest_value >= threshold):
+                            result['classification_threshold'] = classes_pred['label']
 
-            if i % batch_size_to_save == 0 and i > 0:
-                # self.__create_classification_column(df_results, class_name).to_csv(result_file_name, index=False)
-                df_results.to_csv(result_file_name, index=False)
-                                
-            i += 1
+                df_results = pd.concat([df_results, pd.DataFrame.from_dict(result)])
 
-        # self.__create_classification_column(df_results, class_name).to_csv(result_file_name, index=False)#['label_match'].value_counts()
-        df_results.to_csv(result_file_name, index=False)
+                if i % batch_size_to_save == 0 and i > 0:
+                    # self.__create_classification_column(df_results, class_name).to_csv(result_file_name, index=False)
+                    df_results.to_csv(result_file_name, index=False)
+                                    
+                i += 1
+
+            # self.__create_classification_column(df_results, class_name).to_csv(result_file_name, index=False)#['label_match'].value_counts()
+            df_results.to_csv(result_file_name, index=False)
         
+        print('Finished:', result_file_name)
+            

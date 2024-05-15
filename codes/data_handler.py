@@ -79,13 +79,10 @@ class DataHandler():
     def __replace_emojis_by_text(self, text, language='en'):
         return emoji.demojize(text, language=language)
 
-    def __remove_words_with_euro(self, input_string):
-        # Define a regular expression pattern to match words containing 'euro'
-        pattern = r'\b\w*#?euro\w*\b'
-        # Use re.sub to replace matching words with an empty string
-        result = re.sub(pattern, '', input_string)
-
-        return result
+    def __remove_terms_and_hashtags(self, text, hashtags_terms_list):
+        for word in hashtags_terms_list:
+            text = text.replace(word, '')
+        return text.strip()
     
     def __remove_stop_words(self, sentence):
         # Split the sentence into individual words
@@ -128,7 +125,7 @@ class DataHandler():
     
         return text
 
-    def __preprocess_sentence(self, text, setup):
+    def preprocess_sentence(self, text, setup):
 
         if setup['lower_case']:
             text = text.lower()
@@ -156,6 +153,9 @@ class DataHandler():
         if setup['remove_between_substrings']:
             for substring_1, substring_2 in setup['remove_between_substrings']:
                 text = self.__remove_text_between_patterns(text, substring_1, substring_2)
+
+        if setup['remove_terms_hashtags']:
+            text = self.__remove_terms_and_hashtags(text, setup['remove_terms_hashtags'])
 
         if setup['remove_hashtags']:
             hashtag_pattern = r'#\w+'
@@ -243,7 +243,7 @@ class DataHandler():
         self.df.reset_index(drop=True, inplace=True)
 
         self.processed_text_column = 'processed_'+self.text_column
-        self.df[self.processed_text_column] = self.df.apply(lambda x: self.__preprocess_sentence(x[self.text_column], setup), axis=1)
+        self.df[self.processed_text_column] = self.df.apply(lambda x: self.preprocess_sentence(x[self.text_column], setup), axis=1)
 
         if setup['remove_non_text_characters']:
             pattern = re.compile(r'[^\x00-\x7F]+')

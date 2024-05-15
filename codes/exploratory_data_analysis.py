@@ -11,7 +11,7 @@ def plot_confusion_matrix(y_true, y_pred, labels, title=None, filename=None):
     
     # Create a heatmap
     plt.figure(figsize=(10, 8))
-    sns.set_theme(font_scale=1.2)  # Adjust font scale for better readability
+    sns.set_theme(font_scale=2.5)  # Adjust font scale for better readability font_scale=1.2
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False, xticklabels=labels, yticklabels=labels)
     
     plt.xlabel('Predicted Label')
