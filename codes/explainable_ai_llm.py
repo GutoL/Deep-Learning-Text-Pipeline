@@ -101,7 +101,7 @@ class ExplainableTransformerPipeline():
 
         words_list, scores_list = self.aggregate_subtokens_into_words(inputs, word_attributions)
 
-        scores_list = [np.mean(scores) for scores in scores_list]
+        scores_list = [np.sum(scores) for scores in scores_list]
 
         if bar:
             self.plot_word_scores_bar(words_list, scores_list, file_name, prediction[0]['label']+': '+str(round(prediction[0]['score']*100, 2))+'%')
@@ -119,6 +119,8 @@ class ExplainableTransformerPipeline():
         scores = attr.cpu().numpy()[0]
 
         token_scores_list = [(word, score) for word, score in zip(words, scores)]
+
+        print('token_scores_list', token_scores_list)
         
         if self.__name == 'roberta':
             words_list, scores_list = self.combine_tokens_into_words_roberta(token_list=token_scores_list)

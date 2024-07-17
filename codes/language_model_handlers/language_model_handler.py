@@ -4,7 +4,7 @@ from abc import abstractmethod
 from transformers import AutoTokenizer, AutoModelForSequenceClassification #, BertModel, BertTokenizer
 from sentence_transformers import SentenceTransformer
 import pandas as pd 
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler #, SequentialSampler
+from torch.utils.data import TensorDataset, DataLoader # RandomSampler #, SequentialSampler
 from sklearn.manifold import TSNE, MDS
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt

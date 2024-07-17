@@ -96,22 +96,23 @@ new_labels = {0: 'non-'+dataset_type, 1: dataset_type}
 # ---------------------------------------------------------------------------
 
 preprocessing_setup = {
-    'lower_case': True,
+    'lower_case': False,
     'remove_emojis': True,
     'replace_emojis_by_text': False,
-    'remove_stop_words': True,
+    'remove_stop_words': False, #True,
     'remove_numbers': False,
     'remove_users': True,
     'remove_urls': True,
     'remove_non_text_characters': True,
     'lemmatize': False,
     'expand_contractions': False,
-    'remove_hashtags': True,
+    'remove_hashtags': False,
     'remove_money_values': False,
     'remove_apostrophe_contractions': False,
-    'symbols_to_remove': False, # ['&', '$', '*']
-    'remove_between_substrings': None # [('_x0','d_')]
-}
+    'symbols_to_remove': ['*', '@'],
+    'remove_between_substrings': None, # [('_x0','d_')]
+    'remove_terms_hashtags': None # ['euros', 'the euros', 'euro']
+}   
 
 
 data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column)
@@ -162,15 +163,20 @@ training_parameters = {
     'loss_function':nn.CrossEntropyLoss(),
     'dataset_train':train_data,
     'dataset_test':test_data,
-    'epochs':10,
-    'seed':random_state,
+    'epochs':15,
+    'seed':42,
     'repetitions':1,
-    'model_file_name': path+'saved_models/'+model_name
+    'model_file_name': 'save_models/model_name',
+    #Early stop mechanism
+    'patience': 2,
+    'min_delta': 0.1
 }
 
 metrics, model = language_model_manager.train_evaluate_model(training_parameters=training_parameters)
 
 # language_model_manager.save_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
+# language_model_manager.load_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
+
 
 _, metrics, classifications_df = language_model_manager.evaluate_model(test_data)
 

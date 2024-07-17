@@ -2,11 +2,11 @@
 
 ## Overview
 
-This project implements a pipeline for text classification using state-of-the-art Deep Learning models. The pipeline facilitates importing data from CSV/Excel files containing text samples along with their corresponding labels. It leverages pre-trained models available in the Hugging Face Hub and provides functionality to retrain these models using custom datasets. Additionally, the pipeline integrates explainable AI algorithms based on the Captum library, enabling users to understand the impact of individual words on model predictions.
+This project implements a pipeline for text classification using state-of-the-art Deep Learning models. The pipeline facilitates importing data from CSV files containing text samples along with their corresponding labels. It leverages pre-trained models available in the Hugging Face Hub and provides functionality to retrain these models using custom datasets. Additionally, the pipeline integrates explainable AI algorithms based on the Captum library, enabling users to understand the impact of individual words on model predictions.
 
 ## Features
 
-- **Data Import**: Import text data and labels from CSV/Excel files.
+- **Data Import**: Import text data and labels from CSV files.
 - **Model Integration**: Easily import pre-trained models from the Hugging Face Hub.
 - **Retraining**: Retrain imported models using custom datasets for domain-specific tasks.
 - **Explainable AI**: Utilize Captum library algorithms to interpret model decisions.

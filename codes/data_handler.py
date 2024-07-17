@@ -256,7 +256,10 @@ class DataHandler():
         # temp_text_column = self.get_text_column_name()
         # columns = [temp_text_column, self.label_column]
 
-        columns = [self.text_column, self.processed_text_column, self.label_column]
+        columns = [self.text_column, self.label_column]
+
+        if self.processed_text_column:
+            columns.append(self.processed_text_column)
 
         processed_df_grouped = self.df[columns].groupby(self.label_column)
         processed_df_grouped.groups.values()

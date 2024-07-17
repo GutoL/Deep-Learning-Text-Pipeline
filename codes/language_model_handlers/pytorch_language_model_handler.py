@@ -5,6 +5,7 @@ import torch
 import numpy as np 
 from transformers import get_linear_schedule_with_warmup
 from torch.optim import AdamW
+import torch.nn.functional as functional
 from tqdm import tqdm
 from transformers.trainer_pt_utils import get_parameter_names
 import pandas as pd
@@ -13,6 +14,25 @@ from transformers import EvalPrediction
 import matplotlib.pyplot as plt
 
 from codes.language_model_handlers.language_model_handler import LanguageModelHandler
+
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = float('inf')
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+            
+        return False
 
 class PytorchLanguageModelHandler(LanguageModelHandler):
     def __init__(self, model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
@@ -30,67 +50,6 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
         return encoded_dict['input_ids'], encoded_dict['attention_mask']
 
 
-    def evaluate_model(self, test_dataset):
-        
-        # classifications_df = pd.DataFrame(test_dataset[self.text_column].to_list(), columns=[self.text_column])
-        classifications_df = pd.DataFrame()
-        
-        dataloader_test = self.prepare_dataset(test_dataset, shuffle=False)
-
-        self.model.eval()
-    
-        loss_val_total = 0
-        predictions, true_vals = [], []
-
-        texts = []
-        labels = []
-
-        j = 0
-        for batch in dataloader_test:
-            
-            batch = tuple(b.to(self.device) for b in batch)       
-            
-            for i in range(len(batch[0])):
-                
-                # text = [token for token in self.tokenizer.decode(batch[0][i], skip_special_tokens=True).split()] # removing special tokens from BERT-based model
-                # texts.append(' '.join(text))
-                texts.append(test_dataset.iloc[j][self.text_column])                
-
-                labels.append(batch[2][i].cpu().numpy())
-
-                j += 1
-
-            inputs = {'input_ids':      batch[0],
-                      'attention_mask': batch[1],
-                      'labels':         batch[2],
-                     }
-    
-            with torch.no_grad():        
-                outputs = self.model(**inputs)
-
-            loss = outputs[0]
-            logits = outputs[1]
-            loss_val_total += loss.item()
-    
-            logits = logits.detach().cpu().numpy()
-            label_ids = inputs['labels'].cpu().numpy()
-            predictions.append(logits)
-            true_vals.append(label_ids)
-        
-        loss_val_avg = loss_val_total/len(dataloader_test) 
-        
-        predictions = np.concatenate(predictions, axis=0).argmax(-1)
-        true_vals = np.concatenate(true_vals, axis=0)
-
-        classifications_df['texts'] = texts
-        classifications_df['labels'] = labels #true_vals
-        classifications_df['predictions'] = predictions
-
-        # metrics = self.compute_metrics({'predictions':np.argmax(predictions, axis=-1),'label_ids':true_vals})
-        metrics = self.compute_metrics(EvalPrediction(predictions=predictions, label_ids=true_vals))
-        
-        return loss_val_avg, metrics, classifications_df
-        
     def train_evaluate_model(self, training_parameters):
 
         # seed_val = training_parameters['seed']
@@ -145,6 +104,8 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
             
             ## Start the training
             best_val_loss = float('inf')
+
+            early_stopper = EarlyStopper(patience=training_parameters['patience'], min_delta=training_parameters['min_delta'])
 
             for epoch_num in range(epochs):
                 epoch_num = epoch_num + 1
@@ -201,6 +162,9 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
                     fp = open(path_to_model+model_name_file+'/epoch_number.txt', "w")
                     fp.write(str(epoch_num))
                     fp.close()
+                
+                if early_stopper.early_stop(loss_val_avg):             
+                    break
 
             for m in metrics:
                 if m in metrics_results:
@@ -222,3 +186,78 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
             print(metric, np.mean(metrics_results[metric]))
 
         return metrics_results, self.model # '''
+
+    def evaluate_model(self, test_dataset):
+        
+        # classifications_df = pd.DataFrame(test_dataset[self.text_column].to_list(), columns=[self.text_column])
+        classifications_df = pd.DataFrame()
+
+        texts, true_vals, predictions, loss_val_total = self.model_prediction(data=test_dataset, convert_output_to_probability=True)
+        
+        # loss_val_avg = loss_val_total/len(dataloader_test) 
+        loss_val_avg = loss_val_total/len(test_dataset) 
+        
+        predictions = np.concatenate(predictions, axis=0).argmax(-1)
+        true_vals = np.concatenate(true_vals, axis=0)
+
+        classifications_df['texts'] = texts
+        classifications_df['labels'] = true_vals # labels
+        classifications_df['predictions'] = predictions
+
+        # metrics = self.compute_metrics({'predictions':np.argmax(predictions, axis=-1),'label_ids':true_vals})
+        metrics = self.compute_metrics(EvalPrediction(predictions=predictions, label_ids=true_vals))
+        
+        return loss_val_avg, metrics, classifications_df
+    
+    def model_prediction(self, data, convert_output_to_probability):
+
+        dataloader_test = self.prepare_dataset(data, shuffle=False)
+
+        self.model.eval()
+    
+        loss_val_total = 0
+        predictions, true_vals = [], []
+
+        texts = []
+        # labels = []
+
+        j = 0
+
+        for batch in dataloader_test:
+            
+            batch = tuple(b.to(self.device) for b in batch)       
+            
+            for i in range(len(batch[0])):
+                
+                # text = [token for token in self.tokenizer.decode(batch[0][i], skip_special_tokens=True).split()] # removing special tokens from BERT-based model
+                # texts.append(' '.join(text))
+                texts.append(data.iloc[j][self.text_column])                
+
+                # labels.append(batch[2][i].cpu().numpy())
+
+                j += 1
+
+            inputs = {
+                        'input_ids':      batch[0],
+                        'attention_mask': batch[1],
+                        'labels':         batch[2],
+                     }
+    
+            with torch.no_grad():        
+                outputs = self.model(**inputs)
+
+            loss = outputs[0]
+            logits = outputs[1]
+            loss_val_total += loss.item()
+    
+            label_ids = inputs['labels'].cpu().numpy()
+            true_vals.append(label_ids)
+
+            if convert_output_to_probability:
+                logits = functional.softmax(logits, dim=-1)
+                
+            logits = logits.detach().cpu().numpy()
+
+            predictions.append(logits)           
+        
+        return texts, true_vals, predictions, loss_val_total

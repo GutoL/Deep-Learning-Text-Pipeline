@@ -85,20 +85,23 @@ print(df[label_column].value_counts())
 # ---------------------------------------------------------------------------
 
 preprocessing_setup = {
-    'lower_case': True,
-    'remove_emojis': False,
-    'remove_stop_words': True,
+    'lower_case': False,
+    'remove_emojis': True,
+    'replace_emojis_by_text': False,
+    'remove_stop_words': False, #True,
     'remove_numbers': False,
     'remove_users': True,
     'remove_urls': True,
     'remove_non_text_characters': True,
     'lemmatize': False,
     'expand_contractions': False,
-    'remove_hashtags': True,
+    'remove_hashtags': False,
     'remove_money_values': False,
     'remove_apostrophe_contractions': False,
-    'symbols_to_remove': False # ['&', '$', '*']
-}
+    'symbols_to_remove': ['*', '@'],
+    'remove_between_substrings': None, # [('_x0','d_')]
+    'remove_terms_hashtags': None # ['euros', 'the euros', 'euro']
+}   
 
 
 data_handler = DataHandler(df=df, text_column=original_text_column, label_column=label_column)
@@ -140,9 +143,13 @@ training_parameters = {
     'loss_function':nn.CrossEntropyLoss(),
     'dataset_train':train_data,
     'dataset_test':test_data,
-    'epochs':10,
+    'epochs':15,
     'seed':42,
-    'repetitions':1
+    'repetitions':1,
+    'model_file_name': 'save_models/model_name',
+    #Early stop mechanism
+    'patience': 2,
+    'min_delta': 0.1
 }
 
 # metrics, model = language_model_manager.train_evaluate_model(training_parameters=training_parameters)
