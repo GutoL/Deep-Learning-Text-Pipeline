@@ -17,12 +17,14 @@ nltk.download('stopwords')
 stop_words = set(stopwords.words('english'))
 
 class DataHandler():
-    def __init__(self, df, text_column, label_column, random_state=42):
+    def __init__(self, df, text_column, label_column, extra_columns, random_state=42):
         self.random_state = random_state
         self.df = df
         self.text_column = text_column
         self.processed_text_column = None
         self.label_column = label_column
+
+        self.extra_columns = extra_columns
 
         if label_column:
             self.number_of_labels = len(df[label_column].value_counts())
@@ -67,22 +69,66 @@ class DataHandler():
 
     # Function for expanding contractions
     def __expand_contractions(self, text):
-        contractions_re=re.compile('(%s)' % '|'.join(self.contractions_dict.keys()))
+        """
+        Expands contractions in the input text using a predefined dictionary of contractions.
+
+        Args:
+            text (str): The input text containing contractions to expand.
+
+        Returns:
+            str: The text with contractions expanded.
+        """
+        # Compile a regular expression to match contractions
+        contractions_re = re.compile('(%s)' % '|'.join(self.contractions_dict.keys()))
 
         def replace(match):
+            # Replace the matched contraction with its expanded form from the dictionary
             return self.contractions_dict[match.group(0)]
+        
         return contractions_re.sub(replace, text)
 
     def __remove_emojis(self, text):
+        """
+        Removes emojis from the input text.
+
+        Args:
+            text (str): The input text from which to remove emojis.
+
+        Returns:
+            str: The text with emojis removed.
+        """
         return emoji.replace_emoji(text, replace='')
-    
+
     def __replace_emojis_by_text(self, text, language='en'):
+        """
+        Replaces emojis in the input text with their textual representation.
+
+        Args:
+            text (str): The input text containing emojis.
+            language (str): The language for the emoji conversion. Default is 'en'.
+
+        Returns:
+            str: The text with emojis replaced by their textual representation.
+        """
         return emoji.demojize(text, language=language)
 
     def __remove_terms_and_hashtags(self, text, hashtags_terms_list):
+        """
+        Removes specified terms and hashtags from the input text.
+
+        Args:
+            text (str): The input text from which to remove terms and hashtags.
+            hashtags_terms_list (list): A list of terms and hashtags to remove.
+
+        Returns:
+            str: The text with specified terms and hashtags removed.
+        """
         for word in hashtags_terms_list:
+            # Replace each specified term or hashtag with an empty string
             text = text.replace(word, '')
-        return text.strip()
+        
+        return text.strip()  # Return the cleaned text, stripped of leading/trailing whitespace
+
     
     def __remove_stop_words(self, sentence):
         # Split the sentence into individual words
@@ -111,70 +157,107 @@ class DataHandler():
         return cleaned_string
     
     def __remove_text_between_patterns(self, text, substring_1, substring_2):
+        """
+        Removes text between two specified substrings from the input text, including the substrings themselves.
+
+        Args:
+            text (str): The input text from which to remove content.
+            substring_1 (str): The starting substring indicating the text to be removed.
+            substring_2 (str): The ending substring indicating the text to be removed.
+
+        Returns:
+            str: The modified text with the specified content removed.
+        """
         while True:
+            # Find the starting index of the first substring
             start_index = text.find(substring_1)
             if start_index == -1:  # If start substring not found, break the loop
                 break
             
+            # Find the ending index of the second substring
             end_index = text.find(substring_2, start_index)
             if end_index == -1:  # If end substring not found after start, break the loop
                 break
             
             # Remove text between start and end substrings, inclusive
             text = text[:start_index] + text[end_index + len(substring_2):]
-    
+        
         return text
 
-    def preprocess_sentence(self, text, setup):
 
+    def preprocess_sentence(self, text, setup):
+        """
+        Preprocesses a given text based on specified settings.
+
+        Args:
+            text (str): The input text to preprocess.
+            setup (dict): A configuration dictionary containing preprocessing settings.
+
+        Returns:
+            str: The processed text after applying the specified preprocessing steps.
+        """
+        
+        # Convert text to lowercase if specified
         if setup['lower_case']:
             text = text.lower()
 
+        # Remove emojis if specified
         if setup['remove_emojis']:
             text = self.__remove_emojis(text)
         
-        if setup['replace_emojis_by_text'] == True and setup['remove_emojis'] == False:
+        # Replace emojis with text if specified and emojis are not removed
+        if setup['replace_emojis_by_text'] and not setup['remove_emojis']:
             text = self.__replace_emojis_by_text(text)
 
+        # Remove stop words if specified
         if setup['remove_stop_words']:
             text = self.__remove_stop_words(text)
 
+        # Remove specified random symbols if any
         if setup['symbols_to_remove']:
             text = self.__remove_random_symbols(text, setup['symbols_to_remove'])        
 
+        # Remove numbers from the text if specified
         if setup['remove_numbers']:
-            text = text.replace('\d+', '') # Removing numbers
+            text = text.replace('\d+', '')  # Removing numbers
 
+        # Expand contractions if specified
         if setup['expand_contractions']:
             text = self.__expand_contractions(text)
 
-        # text = p.clean(text) #heavy cleaning
-
+        # Remove text between specified substrings if specified
         if setup['remove_between_substrings']:
             for substring_1, substring_2 in setup['remove_between_substrings']:
                 text = self.__remove_text_between_patterns(text, substring_1, substring_2)
 
+        # Remove specific terms and hashtags if specified
         if setup['remove_terms_hashtags']:
             text = self.__remove_terms_and_hashtags(text, setup['remove_terms_hashtags'])
 
+        # Remove hashtags from the text if specified
         if setup['remove_hashtags']:
             hashtag_pattern = r'#\w+'
             text = re.sub(hashtag_pattern, '', text)
 
+        # Remove user mentions from the text if specified
         if setup['remove_users']:
             username_pattern = r'@\w+'
             text = re.sub(username_pattern, '', text)
 
+        # Remove URLs from the text if specified
         if setup['remove_urls']:
             url_pattern = r'http\S+'
             text = re.sub(url_pattern, '', text)
 
+            # Also remove the placeholder <url> if specified
             url_pattern = r'<url>'
             text = re.sub(url_pattern, '', text)
 
+        # Remove monetary values from the text if specified
         if setup['remove_money_values']:
             text = self.__remove_money_values(text)
 
+        # Lemmatize words in the text if specified
         if setup['lemmatize']:
             wnl = WordNetLemmatizer()
             list2 = nltk.word_tokenize(text)
@@ -182,11 +265,21 @@ class DataHandler():
         
         return text
 
+
     def get_text_column_name(self):
+        """
+        Retrieves the appropriate text column name based on the processing status.
+
+        Returns:
+            str: The name of the text column, either processed or original.
+        """
+        # Check if a processed text column exists and return its name
         if self.processed_text_column:
             return self.processed_text_column
         else:
+            # If no processed column, return the original text column name
             return self.text_column
+
 
     def get_top_words(self, n=100):
 
@@ -238,41 +331,65 @@ class DataHandler():
         return top_words[0][0][0]
 
     def preprocess(self, setup):
+        """
+        Preprocesses the text data in the dataframe by cleaning and applying specified transformations.
 
+        Args:
+            setup (dict): A configuration dictionary containing preprocessing settings.
+
+        Returns:
+            pd.DataFrame: The dataframe with processed text column added.
+        """
+        # Remove rows where the text column is NaN
         self.df.dropna(subset=[self.text_column], inplace=True)
         self.df.reset_index(drop=True, inplace=True)
 
-        self.processed_text_column = 'processed_'+self.text_column
+        # Define the name for the processed text column
+        self.processed_text_column = 'processed_' + self.text_column
+        
+        # Apply the preprocessing function to each row in the text column
         self.df[self.processed_text_column] = self.df.apply(lambda x: self.preprocess_sentence(x[self.text_column], setup), axis=1)
 
+        # If the setup specifies to remove non-ASCII characters, apply the regex substitution
         if setup['remove_non_text_characters']:
             pattern = re.compile(r'[^\x00-\x7F]+')
             self.df[self.processed_text_column] = self.df.apply(lambda x: pattern.sub('', x[self.processed_text_column]), axis=1)
 
         return self.df
 
+
     def unsample(self):
+        """
+        Downsamples the dataframe to have an equal number of samples for each class label.
 
-        # temp_text_column = self.get_text_column_name()
-        # columns = [temp_text_column, self.label_column]
+        Returns:
+            pd.DataFrame: The downsampled dataframe with equal class distribution.
+        """
+        # Define columns to be used from the dataframe
+        columns = [self.text_column, self.label_column]+self.extra_columns
 
-        columns = [self.text_column, self.label_column]
-
+        # If a processed text column exists, add it to the list of columns
         if self.processed_text_column:
             columns.append(self.processed_text_column)
 
+        # Group the dataframe by the label column
         processed_df_grouped = self.df[columns].groupby(self.label_column)
-        processed_df_grouped.groups.values()
 
-        frames_of_groups = [x.sample(processed_df_grouped.size().min(), random_state=self.random_state) for y, x in processed_df_grouped]
+        # Generate a list of dataframes where each dataframe is a sample of the minimum group size
+        frames_of_groups = [x.sample(processed_df_grouped.size().min(), random_state=self.random_state) 
+                            for y, x in processed_df_grouped]
+
+        # Concatenate the sampled dataframes to form a new dataframe
         self.df = pd.concat(frames_of_groups)
 
-        # self.df = shuffle(self.df, random_state=self.random_state)
+        # Shuffle the new dataframe
         self.df = self.df.sample(frac=1, random_state=self.random_state)
         
+        # Reset the index of the new dataframe
         self.df.reset_index(drop=True, inplace=True)
 
         return self.df
+
 
     def split_train_test_dataset(self, train_size=0.8):
         # Training dataset

@@ -36,71 +36,131 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
                              )
 
     def add_new_tokens_to_tokenizer(self, new_tokens):
+        """
+        Adds new tokens to the tokenizer and resizes the model's embedding layer if necessary.
+
+        Args:
+            new_tokens (list): A list of new tokens to add to the tokenizer.
+
+        Returns:
+            int: The number of tokens added to the tokenizer.
+        """
         if self.tokenizer is not None:
+            # Add new tokens to the tokenizer
             number_of_tokens_added = self.tokenizer.add_tokens(new_tokens=new_tokens)
 
             if self.model is not None:
                 print('### Resizing the model embeddings layer...')
+                # Resize the model's embedding layer to accommodate new tokens
                 self.model.resize_token_embeddings(len(self.tokenizer))
 
             return number_of_tokens_added
 
     def prepare_dataset(self, data):
+        """
+        Prepares the dataset for training by tokenizing and converting it to the required format.
+
+        Args:
+            data (pd.DataFrame): The input dataframe containing the data to prepare.
+
+        Returns:
+            Dataset: A tokenized dataset ready for use with the model.
+        """
         
+        # Determine the number of unique labels in the dataset
         self.num_labels = len(data[self.label_column].value_counts())
         
+        # Convert the pandas dataframe to a Hugging Face Dataset
         hg_data = Dataset.from_pandas(data)        
 
-        # Tokenize the dataset
+        # Tokenize the dataset using the predefined tokenization method
         tokenized_dataset = hg_data.map(self.tokenize_dataset)
         
         return tokenized_dataset
 
+
     def evaluate_model(self, dataloader_val):
-        self.model.eval()
-    
-        predictions, true_vals = [], []
+        """
+        Evaluates the model on the provided validation dataloader.
+
+        Args:
+            dataloader_val (DataLoader): The validation DataLoader containing input data.
+
+        Returns:
+            tuple: A tuple containing:
+                - np.ndarray: The predicted logits from the model.
+                - np.ndarray: The true label IDs corresponding to the input data.
+        """
         
+        # Set the model to evaluation mode
+        self.model.eval()
+        
+        predictions, true_vals = [], []  # Initialize lists to store predictions and true values
+        
+        # Iterate over batches in the validation dataloader
         for batch in dataloader_val:
-            
+            # Move batch data to the specified device (CPU/GPU)
             batch = tuple(b.to(self.device) for b in batch)
             
-            inputs = {'input_ids':      batch[0],
-                      'attention_mask': batch[1],
-                      'labels':         batch[2]
-                     }
-    
+            # Prepare inputs for the model
+            inputs = {
+                'input_ids':      batch[0],
+                'attention_mask': batch[1],
+                'labels':         batch[2]
+            }
+
+            # Disable gradient calculation for evaluation
             with torch.no_grad():        
                 outputs = self.model(**inputs)
 
-            logits = outputs['logits']
+            logits = outputs['logits']  # Get the logits from the model's output
             
+            # Detach the logits from the computation graph and move to CPU
             logits = logits.detach().cpu().numpy()
-            label_ids = inputs['labels'].cpu().numpy()
+            label_ids = inputs['labels'].cpu().numpy()  # Get true labels
+
+            # Append logits and true labels to their respective lists
             predictions.append(logits)
             true_vals.append(label_ids)
         
+        # Concatenate predictions and true values across all batches
         predictions = np.concatenate(predictions, axis=0)
         true_vals = np.concatenate(true_vals, axis=0)
                 
-        return predictions, true_vals
+        return predictions, true_vals  # Return the predictions and true labels
+
     
     def train_evaluate_model(self, training_parameters):
+        """
+        Trains and evaluates the model based on the provided training parameters.
+
+        Args:
+            training_parameters (dict): A dictionary containing the necessary training configurations and datasets.
+
+        Returns:
+            tuple: A tuple containing:
+                - dict: The computed metrics (accuracy, precision, recall, F1 score).
+                - MyTrainer: The trainer instance used for training the model.
+        """
         
         results_summary = {}
-        detailed_metrics = ['eval_accuracy', 'eval_precision', 'eval_recall',  'eval_f1']
+        detailed_metrics = ['eval_accuracy', 'eval_precision', 'eval_recall', 'eval_f1']
 
+        # Prepare the training and test datasets
         self.tokenized_dataset_train = self.prepare_dataset(training_parameters['dataset_train'])
         self.tokenized_dataset_test = self.prepare_dataset(training_parameters['dataset_test'])
 
+        # Create data loaders and model
         self.create_dl_model()
 
+        # Create a deep copy of the model to avoid modifying the original during training
         model = deepcopy(self.model)
 
-        # Create adamw_torch optimizer manually
+        # Create the AdamW optimizer with weight decay
         decay_parameters = get_parameter_names(model, [torch.nn.LayerNorm])
         decay_parameters = [name for name in decay_parameters if "bias" not in name]
         
+        # Group parameters for optimizer
         optimizer_grouped_parameters = [
             {
                 "params": [p for n, p in model.named_parameters() if n in decay_parameters],
@@ -111,6 +171,8 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
                 "weight_decay": 0.0,
             },
         ]
+
+        # Initialize the optimizer
         optimizer = torch.optim.AdamW(
             optimizer_grouped_parameters,
             lr=training_parameters['training_args'].learning_rate,
@@ -118,7 +180,7 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
             eps=training_parameters['training_args'].adam_epsilon
         )
 
-        
+        # Initialize the trainer
         self.trainer = MyTrainer(
             model=model, 
             args=training_parameters['training_args'], 
@@ -130,73 +192,99 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
             # tokenizer=self.tokenizer
         )
 
+        # Set up early stopping if specified in the training parameters
         if training_parameters['early_stopping_patience']:
             self.trainer.callbacks = [EarlyStoppingCallback(early_stopping_patience=training_parameters['early_stopping_patience'])]
 
+        # Train the model
         self.trainer.train()
 
+        # Update the model with the trained version from the trainer
         self.model = self.trainer.model
 
+        # Evaluate the model on the test dataset
         predictions, true_vals = self.evaluate_model(dataloader_val=self.prepare_dataset_for_embeddings(training_parameters['dataset_test']))
 
-        predictions = predictions[0].argmax(-1) # you have to extract the logist from the outpout model if it is a tuple
+        # Extract predicted classes from logits
+        predictions = predictions[0].argmax(-1)  # Extract the predicted class indices
 
+        # Compute evaluation metrics
         metrics = self.compute_metrics((np.argmax(predictions, axis=-1), true_vals))
 
-        print(metrics)
+        return metrics, self.trainer  # Return the computed metrics and trainer instance
 
-        # results = self.trainer.evaluate(self.tokenized_dataset_test)
-
-        # for metric in results:
-        #     if metric not in results_summary:
-        #         if metric in detailed_metrics:
-        #             results_summary[metric] = [results[metric]["".join(metric.split('eval_'))]]
-        #         else:
-        #             results_summary[metric] = [results[metric]]
-        #     else:
-        #         if metric in detailed_metrics:
-        #             results_summary[metric].append(results[metric]["".join(metric.split('eval_'))])
-        #         else:
-        #             results_summary[metric].append(results[metric])
-
-        return metrics, self.trainer
 
     def data_loader(self, dataframe, column):
-        for row in dataframe.values:
-            text = row[column] # Getting the text of the tweet
+        """
+        Generator function that yields processed text from a specified column of a dataframe.
 
-            print(text)
+        Args:
+            dataframe (pd.DataFrame): The input dataframe containing text data.
+            column (str): The name of the column from which to extract text.
+
+        Yields:
+            str or list: The original text or a truncated list of words if the text exceeds the size limit.
+        """
+        # Iterate over each row in the dataframe
+        for row in dataframe.values:
+            text = row[column]  # Getting the text from the specified column
+
+            print(text)  # Print the text for debugging purposes
             
+            # Check if the text exceeds the specified word limit
             if len(text.split()) > self.text_size_limit:
+                # Yield the first 'text_size_limit' words as a list
                 yield text.split()[:self.text_size_limit]
             else:
+                # Yield the original text if it doesn't exceed the limit
                 yield text    
-            yield text 
+            
+            yield text  # Yield the original text again (this seems redundant)
+
 
     def plot_embeddings(self, file_name, embeddings_results, labels, algorithm='PCA', all_together=False):
+        """
+        Plots the embeddings using a specified dimensionality reduction algorithm.
 
+        Args:
+            file_name (str): The name of the file to save the plot.
+            embeddings_results (dict): A dictionary containing embeddings for different models.
+            labels (list): The labels corresponding to the embeddings.
+            algorithm (str): The algorithm to use for dimensionality reduction (default is 'PCA').
+            all_together (bool): If True, plots all embeddings together; otherwise, plots them separately.
+        """
+        
+        # Initialize an empty DataFrame to store embeddings
         embeddings_df = pd.DataFrame()
 
+        # Iterate over each model's embeddings
         for model_name in embeddings_results:
-            X = embeddings_results[model_name]
+            X = embeddings_results[model_name]  # Get the embeddings for the current model
 
-            reduced_data =  self.reduce_embeddings_dimentionality(X, algorithm)
+            # Reduce dimensionality of the embeddings
+            reduced_data = self.reduce_embeddings_dimentionality(X, algorithm)
 
+            # Create a DataFrame for the current model's embeddings
             df = pd.DataFrame()
-            df['model'] = [model_name]*X.shape[0]
-            df['model'] = df['model'].apply(lambda i: str(i))
+            df['model'] = [model_name] * X.shape[0]  # Assign model names
+            df['model'] = df['model'].apply(lambda i: str(i))  # Ensure model names are strings
 
-            df['label'] = labels
+            df['label'] = labels  # Assign labels to the DataFrame
 
-            df['first_dimension'] = reduced_data[:,0]
-            df['second_dimension'] = reduced_data[:,1]
+            df['first_dimension'] = reduced_data[:, 0]  # First dimension of reduced data
+            df['second_dimension'] = reduced_data[:, 1]  # Second dimension of reduced data
 
+            # Concatenate the current model's DataFrame to the overall embeddings DataFrame
             embeddings_df = pd.concat([embeddings_df, df])
 
+        # Plot the embeddings based on the 'all_together' flag
         if all_together:
             self.plot_embbedings_together(embeddings_df, file_name)
         else:
             self.plot_embbedings_separated(embeddings_df, file_name)
+
+
+
             
     def plot_embbedings_together(self, embeddings_df):
         plt.figure(figsize=(16,10))

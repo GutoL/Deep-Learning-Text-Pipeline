@@ -85,16 +85,32 @@ class FeaturesExtractor():
         
         return df
     
-    def extract_all_features(self, df, text_column, terms, liwc_dict_path):
-        df = self.analyze_dataframe_polarity_subjectivity(df, text_column)
+    def extract_all_features(self, df, text_column, terms, liwc_dict_path=None):
+        """
+        Extracts various features from the dataframe.
 
+        Args:
+            df (DataFrame): The input dataframe.
+            text_column (str): The column name containing text data.
+            terms (list): List of terms to analyze for presence.
+            liwc_dict_path (str, optional): Path to the LIWC dictionary for analysis. Defaults to None.
+
+        Returns:
+            DataFrame: The dataframe with extracted features.
+        """
+        
+        # Analyze the polarity and subjectivity of the text
+        df = self.analyze_dataframe_polarity_subjectivity(df, text_column)
+        
+        # Analyze the presence of specific terms in the text
         df = self.analyze_word_presence(df, text_column, terms)
 
+        # If a LIWC dictionary path is provided, process the dataframe using LIWC
         if liwc_dict_path:
             my_liwc = CustomLiwc(liwc_dict_path)
-
             df = my_liwc.process_data_frame(df, text_column)
 
         return df
 
-        
+
+            

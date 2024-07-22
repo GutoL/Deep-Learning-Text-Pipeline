@@ -23,6 +23,7 @@ random_state = 42
 
 dataset_type = 'accuracy'
 
+id_column = 'id'
 text_column = 'text'
 label_column = 'classification'
 
@@ -71,7 +72,7 @@ preprocessing_setup = {
 }
 
 
-data_handler = DataHandler(df=df, text_column=text_column, label_column=label_column)
+data_handler = DataHandler(df=df, text_column=text_column, label_column=label_column, extra_columns=[id_column])
 
 data_handler.preprocess(setup=preprocessing_setup)
 

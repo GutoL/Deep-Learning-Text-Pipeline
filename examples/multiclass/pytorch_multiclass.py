@@ -29,6 +29,7 @@ random_state = 42
 
 dataset_type = 'sexism'
 
+id_column = 'id'
 text_column = 'text'
 label_column = 'label'
 
@@ -115,7 +116,7 @@ preprocessing_setup = {
 }   
 
 
-data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column)
+data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column, extra_columns=[id_column])
 
 data_handler.preprocess(setup=preprocessing_setup)
 

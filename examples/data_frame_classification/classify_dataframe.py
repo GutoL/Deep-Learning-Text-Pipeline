@@ -55,7 +55,7 @@ def classify_dataframe(model_name, temp_files_path, results_path, text_column, c
         df[text_column] = df[text_column].str.replace('\\','')
         df[text_column] = df[text_column].apply(lambda x: x[:threshold_text_size] if len(x) > threshold_text_size else x)
 
-        data_handler = DataHandler(df=df, text_column=text_column, label_column=None)
+        data_handler = DataHandler(df=df, text_column=text_column, label_column=None, extra_columns=[])
 
         data_handler.preprocess(setup=preprocessing_setup)
 

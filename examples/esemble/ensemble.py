@@ -155,22 +155,21 @@ fp.close()
 preprocessing_setup = {
 
     'lower_case': True,
-    'remove_emojis': True,
-    'replace_emojis_by_text': False,
+    'remove_emojis': False,
+    'replace_emojis_by_text': True,
     'remove_stop_words': False, #True,
     'remove_numbers': False,
+    'remove_hashtags': True,
     'remove_users': True,
     'remove_urls': True,
     'remove_non_text_characters': True,
     'lemmatize': False,
     'expand_contractions': False,
-    'remove_hashtags': True,
     'remove_money_values': False,
     'remove_apostrophe_contractions': False,
     'symbols_to_remove': ['*', '@', '<url>'],
     'remove_between_substrings': None, # [('_x0','d_')]
     'remove_terms_hashtags': terms_hashtags_euros+['\n']#+['euros', 'the euros', 'euro']
-
 }
 
 
@@ -224,9 +223,10 @@ test_data = test_data_handler.preprocess(setup=preprocessing_setup)
 torch.cuda.empty_cache()
 gc.collect()
 
-# model_name = 'vinai/bertweet-base' #'cardiffnlp/twitter-roberta-base-offensive' #'roberta-base' #'bert-base-uncased' FacebookAI/roberta-base vinai/bertweet-base
+# if model_name is None:
+#     model_name = 'cardiffnlp/roberta-base-offensive' # 'facebook/roberta-hate-speech-dynabench-r4-target' # 'cardiffnlp/twitter-roberta-base-hate-latest' 'cardiffnlp/twitter-roberta-base-offensive' 'bert-base-uncased' 'FacebookAI/roberta-base' 'vinai/bertweet-base'
 
-print('*** Model:', model_name)
+# print('*** Model:', model_name)
 
 
 # language_model_manager = PytorchLanguageModelHandler(model_name=model_name,
@@ -271,23 +271,34 @@ print('*** Model:', model_name)
 #                       class_names=[class_name.capitalize().replace('_', ' ') for class_name in list(new_labels.values())],
 #                       file_name='confusion_matrix/'+model_name+'_confusion_matrix.png')
 
-'''
+
 esemble = EnsembleFeaturesLlm()
 
-dynamic_weights = False
+ensemble_type = 'weighted_voting' # 'weighted_voting' 'default_weighted_average_predictions' 'dynamic_weighted_average_predictions'
 
-ensemble_classification, llms_predictions = esemble.perform_ensemble_llms(data=test_data, 
-                                                                          models_names=['bert-base-uncased', 'FacebookAI/roberta-base', 'vinai/bertweet-base'],
-                                                                          dynamic_weights=dynamic_weights)
+models_list = ['bert-base-uncased', 
+               'vinai/bertweet-base', 
+               'FacebookAI/roberta-base', 
+               'facebook/roberta-hate-speech-dynabench-r4-target',
+               'cardiffnlp/roberta-base-offensive'
+               ]
+
+print('Performing ensemble...', ensemble_type)
+
+ensemble_classification, llms_predictions = esemble.perform_ensemble_llms(data=test_data, models_names=models_list, ensemble_type=ensemble_type)
+
+
+if len(ensemble_classification.shape) >= 2:
+    ensemble_classification = np.argmax(ensemble_classification, axis=1).tolist()
 
 final_classification = pd.DataFrame()
 
 final_classification['text'] = test_data['text']
 final_classification[label_column] = test_data[label_column]
-final_classification['ensemble'] = np.argmax(ensemble_classification, axis=1).tolist()
+final_classification['ensemble'] = ensemble_classification
 
 for llm_name in llms_predictions:
-    
+
     llm_pred = np.argmax(llms_predictions[llm_name], axis=1).tolist()
 
     llm_name = llm_name.replace('/', '_')
@@ -299,14 +310,24 @@ for llm_name in llms_predictions:
                       class_names=[class_name.capitalize().replace('_', ' ') for class_name in list(new_labels.values())],
                       file_name='confusion_matrix/'+llm_name+'_confusion_matrix.png')
 
+for col in final_classification.columns:
+    for model in models_list+['ensemble']:
+        model = model.replace('/','_')
+
+        if model in col:
+            metrics = esemble.compute_metrics(predictions=final_classification[col], labels=final_classification[label_column])
+
+            print('--------------------------------------')
+            print(model)
+            for metric in metrics:
+                print(metric, metrics[metric])
+            
+
 ic(final_classification)
 
-final_classification.to_csv('ensemble.csv', index=False)
+final_classification.to_csv(ensemble_type+'_ensemble.csv', index=False)
 
-if dynamic_weights:
-    confusion_matrix_name = 'confusion_matrix/dynamic_ensemble_confusion_matrix.png'
-else:
-    confusion_matrix_name = 'confusion_matrix/static_ensemble_confusion_matrix.png'
+confusion_matrix_name = 'confusion_matrix/'+ensemble_type+'_confusion_matrix.png'
 
 plot_confusion_matrix(predictions=final_classification['ensemble'].to_list(), 
                       actuals=final_classification[label_column].to_list(), 

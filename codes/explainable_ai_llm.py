@@ -78,166 +78,287 @@ class ExplainableTransformerPipeline():
 
     
     def calculate_word_scores_using_captum(self, text):
+        """
+        Calculate word-level attributions for a given text using Captum's LayerIntegratedGradients.
+
+        Args:
+            text (str): The input text for which to calculate word attributions.
+
+        Returns:
+            inputs (tensor): The tokenized inputs for the text.
+            prediction (list): The model's prediction for the text.
+            word_attributions (tensor): The attributions for each word in the text.
+            delta (float): The convergence delta value.
+        """
+        # Get model prediction for the text
         prediction = self.__pipeline.predict(text)
+        
+        # Generate tokenized inputs for the text
         inputs = self.__generate_inputs(text)
-        baseline = self.generate_baseline(sequence_len = inputs.shape[1])
+        
+        # Generate a baseline for the inputs with the same length as the inputs
+        baseline = self.generate_baseline(sequence_len=inputs.shape[1])
 
-        # print(self.__pipeline.model.config.label2id)
-
+        # Initialize Layer Integrated Gradients with the embedding layer of the model
         lig = LayerIntegratedGradients(self.forward_func, getattr(self.__pipeline.model, self.__name).embeddings)
 
-        # For some reason we need to swap the label dictionary
+        # Swap label dictionary keys and values for target identification
         labels_swaped = {v: k for k, v in self.__pipeline.model.config.id2label.items()}
 
-        word_attributions, delta = lig.attribute(inputs=inputs, baselines=baseline, target=labels_swaped[prediction[0]['label']], return_convergence_delta=True)
+        # Compute word attributions using Layer Integrated Gradients
+        word_attributions, delta = lig.attribute(
+            inputs=inputs,
+            baselines=baseline,
+            target=labels_swaped[prediction[0]['label']],
+            return_convergence_delta=True
+        )
         
         return inputs, prediction, word_attributions, delta
 
-    def explain(self, text: str, file_name:str, bar:bool=True):
-        
+
+    def explain(self, text: str, file_name: str, bar: bool = True):
+        """
+        Generate and visualize word attributions for a given text.
+
+        Args:
+            text (str): The input text to explain.
+            file_name (str): The file name to save the plot.
+            bar (bool): Whether to plot a bar chart of word scores (default: True). If False, plots colored text.
+
+        Returns:
+            None
+        """
+        # Calculate word scores using Captum
         inputs, prediction, word_attributions, delta = self.calculate_word_scores_using_captum(text)
 
-        print('prediction:', prediction)
+        print('Prediction:', prediction)
 
+        # Aggregate subtokens into words and their corresponding scores
         words_list, scores_list = self.aggregate_subtokens_into_words(inputs, word_attributions)
 
+        # Sum the scores for each word
         scores_list = [np.sum(scores) for scores in scores_list]
 
+        # Visualize the word scores
         if bar:
-            self.plot_word_scores_bar(words_list, scores_list, file_name, prediction[0]['label']+': '+str(round(prediction[0]['score']*100, 2))+'%')
+            # Plot bar chart of word scores
+            self.plot_word_scores_bar(
+                words_list,
+                scores_list,
+                file_name,
+                prediction[0]['label'] + ': ' + str(round(prediction[0]['score'] * 100, 2)) + '%'
+            )
         else:
+            # Plot colored text based on word scores
             self.plot_colored_text(words_list, scores_list)
 
 
-    def aggregate_subtokens_into_words(self, inputs: list, word_attributions: list):
-        
-        attr_sum = word_attributions.sum(-1)
 
+    def aggregate_subtokens_into_words(self, inputs: list, word_attributions: list):
+        """
+        Aggregate subtokens into words and their corresponding attributions.
+
+        Args:
+            inputs (list): The tokenized inputs.
+            word_attributions (list): The attributions for each subtoken.
+
+        Returns:
+            words_list (list): List of words.
+            scores_list (list): List of scores for each word.
+        """
+        # Sum the attributions over the last dimension
+        attr_sum = word_attributions.sum(-1)
+        # Normalize the attributions
         attr = attr_sum / torch.norm(attr_sum)
 
+        # Convert token IDs to tokens, skipping special tokens
         words = self.__pipeline.tokenizer.convert_ids_to_tokens(inputs.detach().cpu().numpy()[0], skip_special_tokens=True)
         scores = attr.cpu().numpy()[0]
 
+        # Pair each word with its score
         token_scores_list = [(word, score) for word, score in zip(words, scores)]
 
         print('token_scores_list', token_scores_list)
         
+        # Combine tokens into words based on the model type
         if self.__name == 'roberta':
             words_list, scores_list = self.combine_tokens_into_words_roberta(token_list=token_scores_list)
-
         elif self.__name == 'bert':
             words_list, scores_list = self.combine_tokens_into_words_bert(token_tuples=token_scores_list)
-          
+        
         return words_list, scores_list
 
+
     def combine_tokens_into_words_roberta(self, token_list):
-        words = []
-        scores = []
-        current_word = ''
-        current_score_list = []
+        """
+        Combine sub-tokens into full words for RoBERTa tokenization, and aggregate their associated scores.
+
+        Args:
+            token_list (list of tuples): A list where each element is a tuple containing:
+                - token (str): A token, potentially starting with 'Ġ' which indicates a new word.
+                - score (float): The attribution score for the token.
+
+        Returns:
+            tuple: A tuple containing:
+                - words (list of str): List of combined words where sub-tokens have been merged.
+                - scores (list of lists of float): List of lists where each sub-list contains scores for the corresponding word.
+        """
+        
+        words = []  # List to hold the combined words
+        scores = []  # List to hold the scores for each word
+        current_word = ''  # Accumulator for the current word being built
+        current_score_list = []  # Accumulator for the scores associated with the current word
 
         for token, score in token_list:
-            # Check if the token starts with 'Ġ'
+            # Check if the token starts with 'Ġ', which indicates the start of a new word
             if token.startswith('Ġ'):
-                # If the current_word is not empty, add it to the words list
+                # If there's a currently accumulated word, add it to the words list
                 if current_word:
                     words.append(current_word)
                     scores.append(current_score_list)
                     current_word = ''  # Reset the current word
                     current_score_list = []  # Reset the current score list
 
-                # Remove the 'Ġ' from the token and add it to the current word
+                # Remove the leading 'Ġ' from the token and append it to the current word
                 current_word += token.lstrip('Ġ')
                 current_score_list.append(score)
             else:
-                # Concatenate the token with the current word
+                # Append the token to the current word
                 current_word += token
                 current_score_list.append(score)
 
-        # Append the last word and its score list
+        # Append the last word and its score list, if any
         if current_word:
             words.append(current_word)
             scores.append(current_score_list)
 
         return words, scores
 
+
     def combine_tokens_into_words_bert(self, token_tuples):
+        """
+        Combine sub-tokens into full words for BERT tokenization, and aggregate their associated scores.
+
+        Args:
+            token_tuples (list of tuples): A list where each element is a tuple containing:
+                - token (str): A token, where sub-tokens may start with '##' indicating continuation of a word.
+                - score (float): The attribution score for the token.
+
+        Returns:
+            tuple: A tuple containing:
+                - words (list of str): List of combined words where sub-tokens have been merged.
+                - scores (list of lists of float): List of lists where each sub-list contains scores for the corresponding word.
+        """
+        
         def combine_and_clean(words_list):
+            """
+            Combine sub-tokens into single words and clean up the word tokens by removing '##' prefixes.
+
+            Args:
+                words_list (list of lists of str): List where each sub-list contains tokens for a word.
+
+            Returns:
+                list of str: List of cleaned and combined words.
+            """
             cleaned_words_list = []
             for sublist in words_list:
                 combined_words = ''.join(sublist)
-                cleaned_sublist = combined_words.replace('##', '')
+                cleaned_sublist = combined_words.replace('##', '')  # Remove '##' that indicates sub-token
                 cleaned_words_list.append(cleaned_sublist)
             return cleaned_words_list
-        
 
-        self.tokens_to_exclude = ['[CLS]', '[SEP]']
-        tokens_list = []
-        scores_list = []
+        self.tokens_to_exclude = ['[CLS]', '[SEP]']  # Tokens to be ignored (special tokens)
+        tokens_list = []  # List to hold combined tokens for each word
+        scores_list = []  # List to hold scores for each word
 
-        current_tokens_list = []
-        current_scores_list = []
+        current_tokens_list = []  # Accumulator for the current word's tokens
+        current_scores_list = []  # Accumulator for the current word's scores
 
         for i, (token, score) in enumerate(token_tuples):
-          if token in self.tokens_to_exclude:
-              continue
+            # Skip tokens that are to be excluded
+            if token in self.tokens_to_exclude:
+                continue
 
-          if i < len(token_tuples)-1:
-            next_token = token_tuples[i+1][0]
+            if i < len(token_tuples) - 1:
+                next_token = token_tuples[i + 1][0]
 
-            if '##' not in next_token and len(current_tokens_list) > 0:
-              current_tokens_list.append(token)
-              current_scores_list.append(score)
+                # If the next token is not a continuation token (doesn't start with '##') and current tokens exist
+                if '##' not in next_token and len(current_tokens_list) > 0:
+                    current_tokens_list.append(token)
+                    current_scores_list.append(score)
 
-              tokens_list.append(current_tokens_list)
-              scores_list.append(current_scores_list)
+                    tokens_list.append(current_tokens_list)
+                    scores_list.append(current_scores_list)
 
-              current_tokens_list = []
-              current_scores_list = []
+                    # Reset accumulators for the next word
+                    current_tokens_list = []
+                    current_scores_list = []
 
-            elif '##' not in next_token and len(current_tokens_list) == 0:
-              tokens_list.append([token])
-              scores_list.append([score])
+                # If the next token is not a continuation token and no current tokens
+                elif '##' not in next_token and len(current_tokens_list) == 0:
+                    tokens_list.append([token])
+                    scores_list.append([score])
 
-            elif '##' in next_token:
-              current_tokens_list.append(token)
-              current_scores_list.append(score)
+                # If the next token is a continuation token
+                elif '##' in next_token:
+                    current_tokens_list.append(token)
+                    current_scores_list.append(score)
 
+        # Handle the last token and its score
         last_token = token_tuples[-1][0]
         last_score = token_tuples[-1][1]
 
         if '##' in last_token and last_token not in self.tokens_to_exclude:
-          tokens_list.append(current_tokens_list+[last_token])
-          scores_list.append(current_scores_list+[last_score])
+            tokens_list.append(current_tokens_list + [last_token])
+            scores_list.append(current_scores_list + [last_score])
 
         elif '##' not in last_token and last_token not in self.tokens_to_exclude:
-          tokens_list.append([last_token])
-          scores_list.append([last_score])
+            tokens_list.append([last_token])
+            scores_list.append([last_score])
 
+        # Combine and clean the tokens into words
         return combine_and_clean(tokens_list), scores_list
 
 
-    def __get_most_impactful_words_integrated_gradients(self, text_to_evaluate, threshold, keyword, results):
 
+    def __get_most_impactful_words_integrated_gradients(self, text_to_evaluate, threshold, keyword, results):
+        """
+        Identifies and updates the most impactful words for a given text based on Integrated Gradients attributions.
+
+        Args:
+            text_to_evaluate (str): The text for which to evaluate word attributions.
+            threshold (float): The minimum attribution score required for a word to be considered impactful.
+            keyword (str): The class name for which to filter the results.
+            results (dict): A dictionary where keys are words and values are their counts.
+
+        Returns:
+            dict: Updated dictionary of impactful words with their counts.
+        """
+        
+        # Get word attributions using Integrated Gradients
         word_attributions = self.__cls_explainer(text=text_to_evaluate)
 
-        # print(self.__cls_explainer.predicted_class_name)
+        # Combine sub-tokens into full words and their associated scores
         tokens_list, scores_list = self.combine_tokens_into_words_bert(word_attributions)
 
+        # Prepare a list of words with their average attribution scores
         new_word_attributions = []
         for i, tokens in enumerate(tokens_list):
-            new_word_attributions.append((self.__pipeline.tokenizer.convert_tokens_to_string(tokens), np.mean(scores_list[i])))
+            word = self.__pipeline.tokenizer.convert_tokens_to_string(tokens)
+            average_score = np.mean(scores_list[i])
+            new_word_attributions.append((word, average_score))
 
+        # If the predicted class matches the keyword, update the results dictionary
         if self.__cls_explainer.predicted_class_name == keyword:
-
-            for word in new_word_attributions:
-                if word[1] > threshold:
-                    if word[0] in results:
-                        results[word[0]] += 1
+            for word, score in new_word_attributions:
+                if score > threshold:
+                    if word in results:
+                        results[word] += 1
                     else:
-                        results[word[0]] = 1
+                        results[word] = 1
 
         return results
+
 
     def plot_word_scores_bar(self, words, scores, file_name, title):
         # Set the color for the bars

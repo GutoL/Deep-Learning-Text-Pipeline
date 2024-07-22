@@ -66,6 +66,7 @@ df.drop_duplicates(subset=[original_text_column], inplace=True)
 
 df.rename(columns={original_text_column:'text', label_column: 'labels'}, inplace=True)
 
+id_column = 'id'
 original_text_column = 'text'
 label_column = 'labels'
 
@@ -100,7 +101,7 @@ preprocessing_setup = {
 } 
 
 
-data_handler = DataHandler(df=df, text_column=original_text_column, label_column=label_column)
+data_handler = DataHandler(df=df, text_column=original_text_column, label_column=label_column, extra_columns=[id_column])
 
 data_handler.preprocess(setup=preprocessing_setup)
 

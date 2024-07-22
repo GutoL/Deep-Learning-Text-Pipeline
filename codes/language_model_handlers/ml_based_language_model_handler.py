@@ -25,14 +25,25 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
         self.handler_type = 'machine_learning'
 
     def data_loader(self, dataframe, column):
+        """
+        Generator function that yields processed text data from a specified column in the DataFrame.
+
+        Args:
+            dataframe (pd.DataFrame): The DataFrame containing the data.
+            column (str): The column name containing the text data.
+
+        Yields:
+            list or str: A list of words (if exceeds size limit) or the original text.
+        """
         for row in dataframe.values:
-            text = row[column] # Getting the text of the tweet
-            
+            text = row[column]  # Getting the text from the specified column
+
+            # Yield a truncated list of words if the text exceeds the size limit
             if len(text.split()) > self.text_size_limit:
                 yield text.split()[:self.text_size_limit]
             else:
-                yield text    
-            yield text 
+                yield text  # Yield the original text
+
             
     def generate_embeddings_pipeline(self, sentences_df, column_index):
         fine_tuning_pipeline = pipeline(task="feature-extraction", tokenizer=self.tokenizer, model=self.model, 
@@ -89,39 +100,44 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
         return data.reshape((nsamples, nx*ny))
     
     def train_evaluate_model(self, training_args, iterations):
-        # print([name for name, parameter in self.model.named_parameters()])
+        """
+        Trains and evaluates a specified machine learning model using embeddings from a transformer model.
 
-        # X_train = self.calculate_embeddings_local_model_with_batches(training_args['dataset_train']).values()
-        # X_test = self.calculate_embeddings_local_model_with_batches(training_args['dataset_test']).values()
-       
+        Args:
+            training_args (dict): Dictionary containing training parameters, dataset, and ML model configuration.
+            iterations (int): Number of iterations for training (if applicable).
+
+        Returns:
+            dict: Performance metrics of the trained model.
+        """
+        
+        # Calculate embeddings for training and test datasets
         hidden_states, masks, _ = self.calculate_embeddings_model_layers(training_args['dataset_train'], only_last_layer=True)
         X_train = np.array(list(self.calculate_average_embeddings(hidden_states, masks, layers_ids=[0]).values())[0])
 
         hidden_states, masks, _ = self.calculate_embeddings_model_layers(training_args['dataset_test'], only_last_layer=True)
         X_test = np.array(list(self.calculate_average_embeddings(hidden_states, masks, layers_ids=[0]).values())[0])
         
-        print(X_train.shape, X_test.shape)
+        print(f"Train embeddings shape: {X_train.shape}, Test embeddings shape: {X_test.shape}")
         
         y_train = training_args['dataset_train'][self.label_column]
         y_test = training_args['dataset_test'][self.label_column]
 
-        if training_args['ml_model'].lower() == 'random forest':
-            ml_model = RandomForestClassifier(n_estimators=100, random_state=training_args['seed'])
-            
-        elif training_args['ml_model'].lower() == 'svm':
-            ml_model = SVC(kernel='linear')
+        # Initialize the machine learning model
+        ml_model_mapping = {
+            'random forest': RandomForestClassifier(n_estimators=100, random_state=training_args['seed']),
+            'svm': SVC(kernel='linear'),
+            'decision tree': DecisionTreeClassifier(),
+            'naive bayes': GaussianNB(),
+            'logistic regression': LogisticRegression(),
+            'gradient boosting': GradientBoostingClassifier(n_estimators=100, learning_rate=1.0, max_depth=1, random_state=training_args['seed'])
+        }
 
-        elif training_args['ml_model'].lower() == 'decision tree':
-            ml_model = DecisionTreeClassifier()
+        ml_model_name = training_args['ml_model'].lower()
+        ml_model = ml_model_mapping.get(ml_model_name)
 
-        elif training_args['ml_model'].lower() == 'naive bayes':
-            ml_model = GaussianNB()
-
-        elif training_args['ml_model'].lower() == 'logistic regression':
-            ml_model = LogisticRegression()
-        
-        elif training_args['ml_model'].lower() == 'gradient boosting':
-            ml_model = GradientBoostingClassifier(n_estimators=100, learning_rate=1.0, max_depth=1, random_state=training_args['seed'])
+        if ml_model is None:
+            raise ValueError(f"Model '{training_args['ml_model']}' is not recognized.")
 
         print('Training model...')
         ml_model.fit(X_train, y_train)
@@ -129,7 +145,7 @@ class MachineLearningLanguageModelHandler(LanguageModelHandler):
         # Make predictions on the test set
         y_pred = ml_model.predict(X_test)
 
-        # Calculate performance
+        # Calculate performance metrics
         performance_metrics = self.compute_metrics(EvalPrediction(predictions=y_pred, label_ids=y_test))
         
         return performance_metrics

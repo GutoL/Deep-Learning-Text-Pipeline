@@ -183,7 +183,7 @@ preprocessing_setup = {
 }
 
 
-data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column, random_state=random_state)
+data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column, random_state=random_state, extra_columns=[id_column])
 
 data_handler.unsample()
 

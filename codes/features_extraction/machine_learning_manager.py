@@ -32,6 +32,7 @@ class MachineLearningManager():
         # preds_flat = np.argmax(preds, axis=1).flatten()
         # labels_flat = labels.flatten()
         # return f1_score(labels_flat, preds_flat, average='weighted')
+
         predictions, labels = predictions_labels
 
         average_mode = 'weighted'
@@ -89,31 +90,57 @@ class MachineLearningManager():
         return performance_metrics, classifications_df
     
 
-    def _created_data_loader(self, data, shuffle=True):
-        
+    def _create_data_loader(self, data, shuffle=True):
+        """
+        Create a DataLoader for the given dataset.
+
+        Args:
+            data (pd.DataFrame): The dataset containing features and labels.
+            shuffle (bool): Whether to shuffle the data. Default is True.
+
+        Returns:
+            data_loader (DataLoader): DataLoader object for the dataset.
+        """
+        # Tokenize the dataset to get input IDs and attention masks
         input_ids, att_masks = self.tokenize_dataset(data)
 
+        # Convert labels to a tensor
         Y = torch.LongTensor(data[self.label_column].to_list())
         
-        # move on device (GPU)
+        # Move tensors to the specified device (e.g., GPU)
         input_ids = input_ids.to(self.device)
         att_masks = att_masks.to(self.device)
         Y = Y.to(self.device)
-        
+    
+        # Create a TensorDataset
         dataset = TensorDataset(input_ids, att_masks, Y)
 
+        # Create a DataLoader with the specified batch size and shuffling option
         data_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=shuffle)
 
         return data_loader
+
     
     def _scale_min_max(self, df):
+        """
+        Apply Min-Max scaling to the features in the DataFrame.
 
-        for col_name in self.features_names:
+        Args:
+            df (pd.DataFrame): The DataFrame containing the features to be scaled.
+
+        Returns:
+            df (pd.DataFrame): The DataFrame with scaled features.
+        """
+        for col_name in self.feature_columns:
             xmin = df[col_name].min()
             xmax = df[col_name].max()
-            df[col_name] = (df[col_name] - xmin) / (xmax - xmin)
-
+            if xmax != xmin:  # Prevent division by zero
+                df[col_name] = (df[col_name] - xmin) / (xmax - xmin)
+            else:
+                df[col_name] = 0  # or df[col_name] = df[col_name] / xmax if xmax is not zero
+        
         return df
+
     
     def train_evaluate_nn_model(self, training_args):
         
