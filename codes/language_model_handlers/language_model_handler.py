@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import colorcet as cc
+import numpy as np
 
 
 plt.rcParams['figure.dpi'] = 300
@@ -38,7 +39,7 @@ class LanguageModelHandler():
         self.batch_size = batch_size
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.create_tokenizer()
+        # self.create_tokenizer()
         
 
     def test_gpu(self):
@@ -53,7 +54,7 @@ class LanguageModelHandler():
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         return self.tokenizer
 
-    def create_dl_model(self):
+    def create_llm(self):
         """
         Creates and initializes a model for sequence classification.
 
@@ -63,7 +64,8 @@ class LanguageModelHandler():
         Returns:
             model: The initialized sequence classification model.
         """
-        
+        self.create_tokenizer()
+
         print('Creating model:', self.model_name)  # Log the model name being created
         print('Device:', self.device)  # Log the device being used (CPU/GPU)
         print('Number of output classes:', self.num_labels)  # Log the number of output classes
@@ -125,7 +127,7 @@ class LanguageModelHandler():
 
 
     def save_model(self, path, name_file):
-        name_file = name_file.replace('/','-')
+        name_file = name_file.replace('/','_')
         
         ## Save tokenizer
         self.tokenizer.save_pretrained(path+name_file)
@@ -136,18 +138,32 @@ class LanguageModelHandler():
         self.model.save_pretrained(path+name_file)
         
 
-    def load_model(self, path, name_file):
-        name_file = name_file.replace('/','-')
-        
-        ## Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(path+name_file)
-        
-        ## Load Model
-        self.model = AutoModelForSequenceClassification.from_pretrained(path+name_file)
-        # self.model = torch.load(path+name_file+'/'+name_file+'.pth')
+    def load_llm_model(self, path, name_file):
+        """
+        Loads a pre-trained language model and its tokenizer from the specified path.
+
+        Args:
+            path (str): The directory path where the model and tokenizer are saved.
+            name_file (str): The name of the model file. This is appended to the path to locate the model files.
+
+        Returns:
+            tuple: A tuple containing the loaded tokenizer and model.
+        """
+
+        # Construct the full path to the model directory
+        model_name = path + name_file
+
+        # Load the tokenizer from the pre-trained model
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+        # Load the model from the pre-trained model
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+
+        # Move the model to the specified device (e.g., GPU or CPU)
         self.model.to(self.device)
 
         return self.tokenizer, self.model
+
 
     def compute_metrics(self, eval_pred):
         """
@@ -175,6 +191,36 @@ class LanguageModelHandler():
             'f1': f1_score(labels, predictions, average=average_mode)  # Calculate F1 score
         }
 
+    def one_hot_encode(self, input_list):
+        """
+        Perform one-hot encoding on a list of integers.
+        
+        Args:
+        input_list (list of int): List of integers to be one-hot encoded.
+        
+        Returns:
+        np.ndarray: A 2D numpy array where each row is the one-hot encoded version of the corresponding integer in input_list.
+        
+        Example:
+        >>> one_hot_encode([2, 3, 0, 1])
+        array([[0, 0, 1, 0],
+            [0, 0, 0, 1],
+            [0, 1, 0, 0],
+            [1, 0, 0, 0]])
+        """
+        
+        # Find the number of unique classes by getting the maximum value in the input list
+        # and adding 1 (since class labels are assumed to start from 0)
+        num_classes = max(input_list) + 1
+        
+        # Initialize a 2D numpy array of zeros with shape (number of elements in input_list, num_classes)
+        one_hot_encoded = np.zeros((len(input_list), num_classes), dtype=int)
+        
+        # Iterate over the input list and set the corresponding index in the one-hot encoded array to 1
+        for idx, val in enumerate(input_list):
+            one_hot_encoded[idx, val] = 1
+            
+        return one_hot_encoded
     
     ### EMBEDDINGS METHODS
     def sentences_to_embedding_standard(self, sentences, model_names=None):

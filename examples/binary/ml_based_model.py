@@ -131,7 +131,7 @@ ml_language_model_handler = MachineLearningLanguageModelHandler(model_name=model
                                               new_labels=new_labels,
                                               output_hidden_states=True)
 
-tokenizer, model = ml_language_model_handler.load_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
+tokenizer, model = ml_language_model_handler.load_llm_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
 
 # Set up training arguments
 training_args = {

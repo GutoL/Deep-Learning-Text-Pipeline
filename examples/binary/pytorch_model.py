@@ -157,7 +157,7 @@ training_parameters = {
 
 # language_model_manager.save_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
 
-tokenizer, model = language_model_manager.load_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
+tokenizer, model = language_model_manager.load_llm_model(path=path+'saved_models/'+dataset_type+'/', name_file=model_name)
 
 _, metrics, classifications_df = language_model_manager.evaluate_model(test_data)
 

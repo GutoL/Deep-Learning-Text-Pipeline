@@ -49,6 +49,8 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
     def __init__(self, model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states=True, batch_size=32, text_size_limit=512):
         super().__init__(model_name, new_labels, text_column, processed_text_column, label_column, output_hidden_states, batch_size, text_size_limit)
         self.handler_type = 'pytorch'
+
+        self.create_tokenizer()
     
     def tokenize_dataset(self, data):
 
@@ -87,7 +89,7 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
 
         # Repeat training for a specified number of times
         for x in range(training_parameters['repetitions']):
-            self.create_dl_model()
+            self.create_llm()
 
             # Prepare optimizer with weight decay
             decay_parameters = get_parameter_names(self.model, [torch.nn.LayerNorm])

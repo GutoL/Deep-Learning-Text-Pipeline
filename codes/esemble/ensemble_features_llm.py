@@ -3,6 +3,8 @@ import torch
 import torch.nn.functional as functional
 from torch.utils.data import TensorDataset, DataLoader
 from codes.language_model_handlers.pytorch_language_model_handler import PytorchLanguageModelHandler
+from codes.language_model_handlers.ml_based_language_model_handler import MachineLearningLanguageModelHandler
+
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import numpy as np
 
@@ -12,6 +14,7 @@ from icecream import ic
 class EnsembleFeaturesLlm():
     
     def __init__(self, features_names=None):
+        
         ## LLM parameters 
         self.max_length = 128
         self.batch_size = 32
@@ -20,6 +23,8 @@ class EnsembleFeaturesLlm():
         ## ML parameters
         if features_names:
             self.features_names = features_names
+        
+        self.embeddings_for_ml_models = None
     
     def compute_metrics(self, predictions, labels):
     
@@ -81,7 +86,8 @@ class EnsembleFeaturesLlm():
 
         return data_loader
     
-    def model_prediction(self, tokenizer, model, data, convert_output_to_probability, text_column='text', label_column='label'):
+    def _generate_model_predictions(self, tokenizer, model, data, convert_output_to_probability, 
+                                    text_column='text', label_column='label', machine_learning_model=None):
         """
         Makes predictions using a given model and tokenizer on the provided dataset.
 
@@ -230,7 +236,7 @@ class EnsembleFeaturesLlm():
         return class_accuracies
     
     def weighted_voting(self, predictions, weights):
-        
+
         predictions_array = np.array(predictions)
 
         predictions_array = np.argmax(predictions_array, axis=2) # checking the class with the highest probability per model
@@ -253,19 +259,21 @@ class EnsembleFeaturesLlm():
 
         return result
 
-
-    def perform_ensemble_llms(self, data, models_names, ensemble_type, text_column='text', label_column='label', path=''):
+    
+    def perform_ensemble_llms(self, data, models_names, ensemble_type, text_column='text', label_column='label', path_saved_models=''):
         """
         Performs ensemble predictions using multiple language models.
 
         Args:
             data (pd.DataFrame): The input data containing text and label columns.
-            models_names (list): List of model names to be used in the ensemble.
-            ensemble_type (str): Type of ensemble method to use ('dynamic_weighted_average_predictions', 
-                                'default_weighted_average_predictions', or 'weighted_voting').
+            models_names (list): List of tuples with model names to be used in the ensemble. Each tuple contains the LLM name and optionally an ML model name.
+            ensemble_type (str): Type of ensemble method to use. Options are:
+                                - 'dynamic_weighted_average_predictions'
+                                - 'default_weighted_average_predictions'
+                                - 'weighted_voting'
             text_column (str): The name of the column containing text data. Default is 'text'.
             label_column (str): The name of the column containing label data. Default is 'label'.
-            path (str): Path to the directory containing saved models. Default is an empty string.
+            path_saved_models (str): Path to the directory containing saved models. Default is an empty string.
 
         Returns:
             tuple: Containing final ensemble predictions and individual model predictions.
@@ -275,34 +283,27 @@ class EnsembleFeaturesLlm():
         weights_per_model = {}
 
         # Iterate over each model specified in models_names
-        for model_name in models_names:
-            # Initialize language model handler
-            language_model_manager = PytorchLanguageModelHandler(
-                model_name=model_name,
-                text_column=text_column,
-                processed_text_column=None,
-                label_column=label_column,
-                new_labels=[],
-                output_hidden_states=True
-            )
-            
-            # Load the pre-trained model
-            language_model_manager.load_model(path=path + 'saved_models/', name_file='multi_class_' + model_name.replace('/', '_'))
+        for llm_name, ml_model_name in models_names:
+            # Replace '/' with '_' in LLM name for valid file path
+            llm_name = llm_name.replace('/', '_')
 
-            # Get predictions from the model
-            _, _, pred, _ = self.model_prediction(
-                tokenizer=language_model_manager.tokenizer,
-                model=language_model_manager.model,
-                data=data,
-                convert_output_to_probability=True,
-                text_column=text_column
-            )
+            if ml_model_name is not None:
+                # Generate predictions using the ML model
+                pred = self.generate_predictions_ml(data, ml_model_name, llm_name, text_column, label_column, path_saved_models)
+                model_name = llm_name + '+' + ml_model_name  # Combine LLM and ML model names
+            else:
+                # Generate predictions using the LLM
+                pred = self.generate_predictions_llm(data, llm_name, text_column, label_column, path_saved_models)
+                pred = np.concatenate(pred, axis=0)
+                model_name = llm_name  # Use only LLM name
             
+            # ic(pred)  # Log predictions for debugging
+
             # Store predictions
-            predictions[model_name] = np.concatenate(pred, axis=0)
+            predictions[model_name] = pred
 
             # Calculate and store weights for the model based on accuracy per class
-            weights_per_model[model_name] = self.accuracy_per_class(data[label_column], predictions[model_name])
+            weights_per_model[model_name] = self.accuracy_per_class(data[label_column].values, predictions[model_name])
 
         # Different ensemble types
         if ensemble_type == 'dynamic_weighted_average_predictions':
@@ -318,7 +319,100 @@ class EnsembleFeaturesLlm():
             # Perform weighted voting
             weights_list = [np.mean(list(weights_per_model[name].values())) for name in weights_per_model]
             final_predictions = self.weighted_voting(list(predictions.values()), weights_list)
-
         
         return final_predictions, predictions
+
+    
+
+    def generate_predictions_ml(self, data, ml_model_name, llm_name, text_column, label_column, path_saved_models):
+        """
+        Generates predictions using a machine learning model and a language model.
+
+        Args:
+            data (pd.DataFrame): The input data containing text and label columns.
+            ml_model_name (str): The name of the machine learning model to use.
+            llm_name (str): The name of the language model to use.
+            text_column (str): The name of the column containing text data.
+            label_column (str): The name of the column containing label data.
+            path_saved_models (str): Path to the directory containing saved models.
+
+        Returns:
+            np.ndarray: Predictions generated by the machine learning model.
+        """
+        
+        # Initialize the machine learning language model handler with given parameters
+        ml_language_model_handler = MachineLearningLanguageModelHandler(
+            llm_name=llm_name,
+            ml_model_name=ml_model_name,
+            text_column=text_column,
+            processed_text_column=text_column,
+            label_column=label_column,
+            batch_size=64,
+            new_labels=[],
+            output_hidden_states=True
+        )
+
+        # Load the language model from the specified path
+        ml_language_model_handler.load_llm_model(path=path_saved_models, name_file=llm_name)
+        
+        # Load the machine learning model from the specified path
+        ml_language_model_handler.load_ml_model(path=path_saved_models, ml_model_name=ml_model_name)
+
+        # Check if embeddings are already generated and cached
+        if self.embeddings_for_ml_models is None:
+            # Generate embeddings using the language model
+            self.embeddings_for_ml_models = (llm_name, ml_language_model_handler.generate_embeddings(data=data))
+        else:
+            # If cached embeddings are from a different language model, regenerate embeddings
+            if self.embeddings_for_ml_models[0] != llm_name:
+                self.embeddings_for_ml_models = (llm_name, ml_language_model_handler.generate_embeddings(data=data))
+
+        # Evaluate the machine learning model using the generated embeddings
+        _, predictions = ml_language_model_handler.evaluate_ml_model(
+            X_test=self.embeddings_for_ml_models[1], 
+            y_test=data[label_column],
+            convert_to_one_hot_encoding=True
+        )
+
+        return predictions
+
+    def generate_predictions_llm(self, data, llm_name, text_column, label_column, path_saved_models):
+        """
+        Generates predictions using a language model.
+
+        Args:
+            data (pd.DataFrame): The input data containing text and label columns.
+            llm_name (str): Name of the language model to be used for predictions.
+            text_column (str): The name of the column containing text data.
+            label_column (str): The name of the column containing label data.
+            path_saved_models (str): Path to the directory containing saved models.
+
+        Returns:
+            np.ndarray: The predictions from the language model.
+        """
+        
+        # Initialize the language model handler
+        language_model_manager = PytorchLanguageModelHandler(
+            model_name=llm_name,
+            text_column=text_column,
+            processed_text_column=None,
+            label_column=label_column,
+            new_labels=[],
+            output_hidden_states=True
+        )
+        
+        # Load the pre-trained language model
+        language_model_manager.load_llm_model(path=path_saved_models, name_file=llm_name.replace('/', '_'))
+
+        # Generate predictions using the loaded model
+        _, _, predictions, _ = self._generate_model_predictions(
+            tokenizer=language_model_manager.tokenizer,
+            model=language_model_manager.model,
+            data=data,
+            convert_output_to_probability=True,
+            text_column=text_column
+        )
+
+        return predictions
+
 

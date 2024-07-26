@@ -136,6 +136,9 @@ non_hate_speech_df[label_column] = [0]*non_hate_speech_df.shape[0]
 if non_hate_speech.shape[0] > 0:
     non_hate_speech_df = pd.concat([non_hate_speech_df, non_hate_speech], axis=0)
 
+maximum_values_from_classes = hate_speech_df[label_column].value_counts().max()
+non_hate_speech_df = non_hate_speech_df.head(maximum_values_from_classes)
+
 hate_speech_df = pd.concat([hate_speech_df, non_hate_speech_df], axis=0)
 
 hate_speech_df = hate_speech_df.drop_duplicates(subset=[text_column]) # droping duplicates samples
@@ -173,12 +176,15 @@ preprocessing_setup = {
 }
 
 
-data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column, random_state=random_state)
+data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column, random_state=random_state, extra_columns=[id_column])
 
-data_handler.unsample()
+# data_handler.unsample()
 
-train_data = data_handler.df.sample(frac=0.8, random_state=random_state)
-test_data = data_handler.df.drop(train_data.index)
+train_data, test_data = data_handler.split_train_test_dataset(test_percentage=0.2)
+
+# train_data = data_handler.df.sample(frac=0.8, random_state=random_state)
+# test_data = data_handler.df.drop(train_data.index)
+
 
 # Adding syntetic data to the training -----------------------------------------------------------------------------------------------------
 
@@ -200,21 +206,28 @@ test_data = data_handler.df.drop(train_data.index)
 
 # ------------------------------------------------------------------------------------------------------------
 
-
-for hate_speech_type in hate_speech_file_names:
+## NEW SAMPLES LABELLED MANUALLY (VITOR AND GUTO)
+for i, hate_speech_type in enumerate(hate_speech_file_names):
     new_test_instances = pd.read_excel(datasets_path+'non_hate_speech/new_test_instances.xlsx', sheet_name=hate_speech_type)
 
     new_test_instances.rename(columns={'classification': label_column}, inplace=True)
 
+    # Let's consider only 100 samples from this dataset
+    if i == 0:
+        new_test_instances = new_test_instances.head(33)
+    else:
+        new_test_instances = new_test_instances.head(34)
+
     test_data = pd.concat([test_data, new_test_instances[[text_column, label_column]]])
 
-train_data_handler = DataHandler(df=train_data, text_column=text_column, label_column=label_column, random_state=random_state)
-test_data_handler = DataHandler(df=test_data, text_column=text_column, label_column=label_column, random_state=random_state)
+train_data_handler = DataHandler(df=train_data, text_column=text_column, label_column=label_column, extra_columns=[id_column], random_state=random_state)
+test_data_handler = DataHandler(df=test_data, text_column=text_column, label_column=label_column, extra_columns=[id_column], random_state=random_state)
 
 train_data = train_data_handler.preprocess(setup=preprocessing_setup)
 test_data = test_data_handler.preprocess(setup=preprocessing_setup)
 
-
+ic(train_data[label_column].value_counts())
+ic(test_data[label_column].value_counts())
 
 # ----------------------------------------------------------------------------------
 ## Creating BERT-based model
@@ -223,69 +236,80 @@ test_data = test_data_handler.preprocess(setup=preprocessing_setup)
 torch.cuda.empty_cache()
 gc.collect()
 
-# if model_name is None:
-#     model_name = 'cardiffnlp/roberta-base-offensive' # 'facebook/roberta-hate-speech-dynabench-r4-target' # 'cardiffnlp/twitter-roberta-base-hate-latest' 'cardiffnlp/twitter-roberta-base-offensive' 'bert-base-uncased' 'FacebookAI/roberta-base' 'vinai/bertweet-base'
+if model_name is None:
+    # 'facebook/roberta-hate-speech-dynabench-r4-target' # 'cardiffnlp/twitter-roberta-base-hate-latest' 
+    # 'cardiffnlp/twitter-roberta-base-offensive' 'bert-base-uncased' 'FacebookAI/roberta-base' 'vinai/bertweet-base'
+    model_name = 'FacebookAI/roberta-base' 
 
-# print('*** Model:', model_name)
-
-
-# language_model_manager = PytorchLanguageModelHandler(model_name=model_name,
-#                                                     text_column = data_handler.text_column,
-#                                                     processed_text_column=data_handler.get_text_column_name(),
-#                                                     label_column=data_handler.label_column,
-#                                                     new_labels=new_labels,
-#                                                     output_hidden_states=True)
+print('*** Model:', model_name)
 
 
-# model_name = model_name.replace('/', '_')
-
-# # Set up training arguments
-# training_parameters = {
-#     'learning_rate':0.000001,
-#     # 'eps':1e-8,
-#     'betas':(0.9, 0.999),
-#     'weight_decay':0.01,
-#     'loss_function':torch.nn.CrossEntropyLoss(),
-#     'dataset_train':train_data,
-#     'dataset_test':test_data,
-#     'epochs':20,
-#     'seed':42,
-#     'repetitions':1,
-#     'model_file_name': 'saved_models/'+'multi_class_'+model_name,
-#     #Early stop mechanism
-#     'patience': 2,
-#     'min_delta': 0.1
-# }
-
-# metrics, model = language_model_manager.train_evaluate_model(training_parameters=training_parameters)
-
-# language_model_manager.save_model(path=path+'saved_models/', name_file='multi_class_'+model_name)
-
-# language_model_manager.load_model(path=path+'saved_models/', name_file='multi_class_'+model_name)
+language_model_manager = PytorchLanguageModelHandler(model_name=model_name,
+                                                    text_column = data_handler.text_column,
+                                                    processed_text_column=data_handler.get_text_column_name(),
+                                                    label_column=data_handler.label_column,
+                                                    new_labels=new_labels,
+                                                    output_hidden_states=True)
 
 
-# _, metrics, llm_classifications_df = language_model_manager.evaluate_model(test_data)
+model_name = model_name.replace('/', '_')
+
+# Set up training arguments
+training_parameters = {
+    'learning_rate':0.000001,
+    # 'eps':1e-8,
+    'betas':(0.9, 0.999),
+    'weight_decay':0.01,
+    'loss_function':torch.nn.CrossEntropyLoss(),
+    'dataset_train':train_data,
+    'dataset_test':test_data,
+    'epochs':20,
+    'seed':42,
+    'repetitions':1,
+    'model_file_name': 'saved_models/'+model_name,
+    #Early stop mechanism
+    'patience': 2,
+    'min_delta': 0.1
+}
+
+metrics, model = language_model_manager.train_evaluate_model(training_parameters=training_parameters)
+
+language_model_manager.save_model(path='saved_models/', name_file=model_name)
+
+language_model_manager.load_llm_model(path='saved_models/', name_file=model_name)
+
+
+_, metrics, llm_classifications_df = language_model_manager.evaluate_model(test_data)
+
+
+print(metrics)
 
 # plot_confusion_matrix(predictions=llm_classifications_df['predictions'].to_list(), 
 #                       actuals=llm_classifications_df['labels'].to_list(), 
 #                       class_names=[class_name.capitalize().replace('_', ' ') for class_name in list(new_labels.values())],
 #                       file_name='confusion_matrix/'+model_name+'_confusion_matrix.png')
 
-
+'''
 esemble = EnsembleFeaturesLlm()
 
-ensemble_type = 'weighted_voting' # 'weighted_voting' 'default_weighted_average_predictions' 'dynamic_weighted_average_predictions'
+ensemble_type = 'dynamic_weighted_average_predictions' # 'weighted_voting' 'default_weighted_average_predictions' 'dynamic_weighted_average_predictions'
 
-models_list = ['bert-base-uncased', 
-               'vinai/bertweet-base', 
-               'FacebookAI/roberta-base', 
-               'facebook/roberta-hate-speech-dynabench-r4-target',
-               'cardiffnlp/roberta-base-offensive'
-               ]
+models_list = [
+            # (LLM, classifier)
+               ('bert-base-uncased', None), 
+               ('vinai/bertweet-base', None), 
+               ('FacebookAI/roberta-base', None), 
+               ('facebook/roberta-hate-speech-dynabench-r4-target', None),
+               ('cardiffnlp/roberta-base-offensive', None),
+            #    ('FacebookAI/roberta-base', 'random forest'),
+            #    ('FacebookAI/roberta-base', 'decision tree')
+            ]
 
 print('Performing ensemble...', ensemble_type)
 
-ensemble_classification, llms_predictions = esemble.perform_ensemble_llms(data=test_data, models_names=models_list, ensemble_type=ensemble_type)
+ensemble_classification, llms_predictions = esemble.perform_ensemble_llms(data=test_data, models_names=models_list,
+                                                                           ensemble_type=ensemble_type, 
+                                                                           path_saved_models='saved_models/')
 
 
 if len(ensemble_classification.shape) >= 2:
@@ -310,11 +334,20 @@ for llm_name in llms_predictions:
                       class_names=[class_name.capitalize().replace('_', ' ') for class_name in list(new_labels.values())],
                       file_name='confusion_matrix/'+llm_name+'_confusion_matrix.png')
 
+
+new_models_list = []
+for llm_name, ml_name in models_list:
+    if ml_name is None:
+        new_models_list.append(llm_name)
+    else:
+        new_models_list.append(llm_name+'+'+ml_name)
+models_list = new_models_list
+
 for col in final_classification.columns:
     for model in models_list+['ensemble']:
         model = model.replace('/','_')
 
-        if model in col:
+        if model == col:
             metrics = esemble.compute_metrics(predictions=final_classification[col], labels=final_classification[label_column])
 
             print('--------------------------------------')
@@ -322,8 +355,6 @@ for col in final_classification.columns:
             for metric in metrics:
                 print(metric, metrics[metric])
             
-
-ic(final_classification)
 
 final_classification.to_csv(ensemble_type+'_ensemble.csv', index=False)
 

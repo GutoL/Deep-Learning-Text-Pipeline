@@ -151,7 +151,7 @@ class HuggingfaceLanguageModelHandler(LanguageModelHandler):
         self.tokenized_dataset_test = self.prepare_dataset(training_parameters['dataset_test'])
 
         # Create data loaders and model
-        self.create_dl_model()
+        self.create_llm()
 
         # Create a deep copy of the model to avoid modifying the original during training
         model = deepcopy(self.model)

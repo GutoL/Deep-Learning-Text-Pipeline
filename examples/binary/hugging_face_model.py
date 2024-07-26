@@ -189,7 +189,7 @@ training_parameters = {
 
 # language_model_manager.save_model(path=path+'saved_models/', name_file=model_name)# '''
 
-language_model_manager.load_model(path=path+'saved_models/', name_file=model_name)
+language_model_manager.load_llm_model(path=path+'saved_models/', name_file=model_name)
 
 
 

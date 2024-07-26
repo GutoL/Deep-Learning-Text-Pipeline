@@ -11,6 +11,8 @@ import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
+from sklearn.utils import shuffle
+
 
 nltk.download('stopwords')
 # Create a set of stop words
@@ -390,15 +392,42 @@ class DataHandler():
 
         return self.df
 
+    def split_train_test_dataset(self, test_percentage=0.2):
+        # Shuffle the dataframe to ensure randomness
+        df = shuffle(self.df).reset_index(drop=True)
+        
+        # Get the minimum number of samples in any class
+        min_class_size = df[self.label_column].value_counts().min()
+        
+        # Calculate the number of samples to include in the test set for each class
+        n_test_samples = int(min_class_size * test_percentage)
+        
+        test_indices = []
+        train_indices = []
+        
+        # Loop through each class and select samples
+        for class_label in df[self.label_column].unique():
+            class_indices = df[df[self.label_column] == class_label].index.tolist() # getting index of the rows per class
 
-    def split_train_test_dataset(self, train_size=0.8):
-        # Training dataset
-        train_data = self.df[[self.text_column, self.get_text_column_name(), self.label_column]].sample(frac=train_size, random_state=self.random_state)
+            # Select test samples
+            test_indices.extend(class_indices[:n_test_samples])
+            # Select train samples
+            train_indices.extend(class_indices[n_test_samples:])
+        
+        # Create the test and train dataframes
+        test_df = df.loc[test_indices].reset_index(drop=True)
+        train_df = df.loc[train_indices].reset_index(drop=True)
+        
+        return train_df, test_df
 
-        # Testing dataset
-        test_data = self.df[[self.text_column, self.get_text_column_name(), self.label_column]].drop(train_data.index)
+    # def split_train_test_dataset(self, train_size=0.8):
+    #     # Training dataset
+    #     train_data = self.df[[self.text_column, self.get_text_column_name(), self.label_column]].sample(frac=train_size, random_state=self.random_state)
 
-        return train_data, test_data
+    #     # Testing dataset
+    #     test_data = self.df[[self.text_column, self.get_text_column_name(), self.label_column]].drop(train_data.index)
+
+    #     return train_data, test_data
 
 # ----------------------------------------------------------------------------------------------------
 
