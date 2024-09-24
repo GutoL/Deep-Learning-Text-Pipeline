@@ -392,9 +392,13 @@ class DataHandler():
 
         return self.df
 
-    def split_train_test_dataset(self, test_percentage=0.2):
+    def split_train_test_dataset(self, test_percentage=0.2, random_state=None):
+
+        if random_state is None:
+            random_state = self.random_state
+
         # Shuffle the dataframe to ensure randomness
-        df = shuffle(self.df).reset_index(drop=True)
+        df = shuffle(self.df, random_state=random_state).reset_index(drop=True)
         
         # Get the minimum number of samples in any class
         min_class_size = df[self.label_column].value_counts().min()

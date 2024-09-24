@@ -19,7 +19,7 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 import numpy as np
 
-
+plt.rcParams.update({'font.size':18})
 
 def plot_confusion_matrix(predictions, actuals, class_names, file_name):
     """
@@ -41,6 +41,10 @@ def plot_confusion_matrix(predictions, actuals, class_names, file_name):
     plt.xlabel('Predicted Labels')
     plt.ylabel('True Labels')
     plt.title('Confusion Matrix')
+
+    plt.xticks(rotation=45)
+    plt.yticks(rotation=45)
+    plt.tight_layout()
     
     # Show the plot
     # plt.show()
@@ -176,11 +180,12 @@ preprocessing_setup = {
 }
 
 
-data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column, random_state=random_state, extra_columns=[id_column])
+data_handler = DataHandler(df=hate_speech_df, text_column=text_column, label_column=label_column, 
+                           random_state=random_state, extra_columns=[id_column])
 
 # data_handler.unsample()
 
-train_data, test_data = data_handler.split_train_test_dataset(test_percentage=0.2)
+train_data, test_data = data_handler.split_train_test_dataset(test_percentage=0.2, random_state=89)
 
 # train_data = data_handler.df.sample(frac=0.8, random_state=random_state)
 # test_data = data_handler.df.drop(train_data.index)
@@ -220,14 +225,18 @@ for i, hate_speech_type in enumerate(hate_speech_file_names):
 
     test_data = pd.concat([test_data, new_test_instances[[text_column, label_column]]])
 
-train_data_handler = DataHandler(df=train_data, text_column=text_column, label_column=label_column, extra_columns=[id_column], random_state=random_state)
-test_data_handler = DataHandler(df=test_data, text_column=text_column, label_column=label_column, extra_columns=[id_column], random_state=random_state)
+train_data_handler = DataHandler(df=train_data, text_column=text_column, label_column=label_column, 
+                                 extra_columns=[id_column], random_state=random_state)
+test_data_handler = DataHandler(df=test_data, text_column=text_column, label_column=label_column, 
+                                extra_columns=[id_column], random_state=random_state)
 
 train_data = train_data_handler.preprocess(setup=preprocessing_setup)
 test_data = test_data_handler.preprocess(setup=preprocessing_setup)
 
 ic(train_data[label_column].value_counts())
 ic(test_data[label_column].value_counts())
+
+'''
 
 # ----------------------------------------------------------------------------------
 ## Creating BERT-based model
@@ -290,9 +299,10 @@ print(metrics)
 #                       file_name='confusion_matrix/'+model_name+'_confusion_matrix.png')
 
 '''
+
 esemble = EnsembleFeaturesLlm()
 
-ensemble_type = 'dynamic_weighted_average_predictions' # 'weighted_voting' 'default_weighted_average_predictions' 'dynamic_weighted_average_predictions'
+ensemble_list = ['dynamic_weighted_average_predictions', 'weighted_voting'] # 'weighted_voting' 'default_weighted_average_predictions' 'dynamic_weighted_average_predictions'
 
 models_list = [
             # (LLM, classifier)
@@ -301,25 +311,32 @@ models_list = [
                ('FacebookAI/roberta-base', None), 
                ('facebook/roberta-hate-speech-dynabench-r4-target', None),
                ('cardiffnlp/roberta-base-offensive', None),
+
+
             #    ('FacebookAI/roberta-base', 'random forest'),
             #    ('FacebookAI/roberta-base', 'decision tree')
-            ]
+]
 
-print('Performing ensemble...', ensemble_type)
+print('Performing ensemble...', ensemble_list)
 
-ensemble_classification, llms_predictions = esemble.perform_ensemble_llms(data=test_data, models_names=models_list,
-                                                                           ensemble_type=ensemble_type, 
+ensemble_classification_results, llms_predictions = esemble.perform_ensemble_llms(data=test_data, models_names=models_list,
+                                                                           ensemble_list=ensemble_list, 
                                                                            path_saved_models='saved_models/')
 
-
-if len(ensemble_classification.shape) >= 2:
-    ensemble_classification = np.argmax(ensemble_classification, axis=1).tolist()
 
 final_classification = pd.DataFrame()
 
 final_classification['text'] = test_data['text']
 final_classification[label_column] = test_data[label_column]
-final_classification['ensemble'] = ensemble_classification
+
+for ensemble_method, ensemble_classification in ensemble_classification_results.items():
+    if len(ensemble_classification.shape) >= 2:
+        ensemble_classification = np.argmax(ensemble_classification, axis=1).tolist()
+
+    else:
+        ensemble_classification = ensemble_classification
+
+    final_classification[ensemble_method] = ensemble_classification
 
 for llm_name in llms_predictions:
 
@@ -336,31 +353,44 @@ for llm_name in llms_predictions:
 
 
 new_models_list = []
+
 for llm_name, ml_name in models_list:
     if ml_name is None:
         new_models_list.append(llm_name)
     else:
         new_models_list.append(llm_name+'+'+ml_name)
+
 models_list = new_models_list
 
+
+results_df = pd.DataFrame()
+
 for col in final_classification.columns:
-    for model in models_list+['ensemble']:
+    for model in models_list+ensemble_list:
         model = model.replace('/','_')
 
         if model == col:
             metrics = esemble.compute_metrics(predictions=final_classification[col], labels=final_classification[label_column])
 
+            row_dict = {'model': [model]}
+
             print('--------------------------------------')
             print(model)
             for metric in metrics:
                 print(metric, metrics[metric])
+
+                row_dict[metric] = [metrics[metric]]
+
+            results_df = pd.concat([results_df, pd.DataFrame.from_dict(row_dict)])
             
 
-final_classification.to_csv(ensemble_type+'_ensemble.csv', index=False)
+final_classification.to_csv('ensemble.csv', index=False)
+results_df.to_csv('ensemble_metrics_results.csv', index=False)
 
-confusion_matrix_name = 'confusion_matrix/'+ensemble_type+'_confusion_matrix.png'
+for ensemble_method in ensemble_list:
+    confusion_matrix_name = 'confusion_matrix/'+ensemble_method+'_confusion_matrix.png'
 
-plot_confusion_matrix(predictions=final_classification['ensemble'].to_list(), 
-                      actuals=final_classification[label_column].to_list(), 
-                      class_names=[class_name.capitalize().replace('_', ' ') for class_name in list(new_labels.values())],
-                      file_name=confusion_matrix_name) # '''
+    plot_confusion_matrix(predictions=final_classification[ensemble_method].to_list(), 
+                        actuals=final_classification[label_column].to_list(), 
+                        class_names=[class_name.capitalize().replace('_', ' ') for class_name in list(new_labels.values())],
+                        file_name=confusion_matrix_name) # '''

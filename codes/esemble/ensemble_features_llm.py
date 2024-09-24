@@ -260,14 +260,14 @@ class EnsembleFeaturesLlm():
         return result
 
     
-    def perform_ensemble_llms(self, data, models_names, ensemble_type, text_column='text', label_column='label', path_saved_models=''):
+    def perform_ensemble_llms(self, data, models_names, ensemble_list, text_column='text', label_column='label', path_saved_models=''):
         """
         Performs ensemble predictions using multiple language models.
 
         Args:
             data (pd.DataFrame): The input data containing text and label columns.
             models_names (list): List of tuples with model names to be used in the ensemble. Each tuple contains the LLM name and optionally an ML model name.
-            ensemble_type (str): Type of ensemble method to use. Options are:
+            ensemble_list (list): list of types of ensemble method to use. Options are:
                                 - 'dynamic_weighted_average_predictions'
                                 - 'default_weighted_average_predictions'
                                 - 'weighted_voting'
@@ -305,21 +305,28 @@ class EnsembleFeaturesLlm():
             # Calculate and store weights for the model based on accuracy per class
             weights_per_model[model_name] = self.accuracy_per_class(data[label_column].values, predictions[model_name])
 
-        # Different ensemble types
-        if ensemble_type == 'dynamic_weighted_average_predictions':
-            # Perform dynamic weighted average of predictions
-            final_predictions = self.dynamic_weighted_average_predictions(list(predictions.values()), weights_per_model)
-        
-        elif ensemble_type == 'default_weighted_average_predictions':
-            # Perform default weighted average of predictions
-            weights_list = [np.mean(list(weights_per_model[name].values())) for name in weights_per_model]
-            final_predictions = self.default_weighted_average_predictions(list(predictions.values()), weights=weights_list)
-        
-        elif ensemble_type == 'weighted_voting':
-            # Perform weighted voting
-            weights_list = [np.mean(list(weights_per_model[name].values())) for name in weights_per_model]
-            final_predictions = self.weighted_voting(list(predictions.values()), weights_list)
-        
+
+        final_predictions = {}
+
+        for ensemble_type in ensemble_list:
+            # Different ensemble types
+            if ensemble_type == 'dynamic_weighted_average_predictions':
+                # Perform dynamic weighted average of predictions
+                ensemble_predictions = self.dynamic_weighted_average_predictions(list(predictions.values()), weights_per_model)
+            
+            elif ensemble_type == 'default_weighted_average_predictions':
+                # Perform default weighted average of predictions
+                weights_list = [np.mean(list(weights_per_model[name].values())) for name in weights_per_model]
+                ensemble_predictions = self.default_weighted_average_predictions(list(predictions.values()), weights=weights_list)
+            
+            elif ensemble_type == 'weighted_voting':
+                # Perform weighted voting
+                weights_list = [np.mean(list(weights_per_model[name].values())) for name in weights_per_model]
+                # weights_list = [1] * len(models_names)
+                ensemble_predictions = self.weighted_voting(list(predictions.values()), weights_list)
+
+            final_predictions[ensemble_type] = ensemble_predictions
+
         return final_predictions, predictions
 
     
@@ -398,7 +405,8 @@ class EnsembleFeaturesLlm():
             processed_text_column=None,
             label_column=label_column,
             new_labels=[],
-            output_hidden_states=True
+            output_hidden_states=True,
+            create_tokenizer=False
         )
         
         # Load the pre-trained language model
