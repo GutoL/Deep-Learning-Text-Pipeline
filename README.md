@@ -34,6 +34,21 @@ To get started with the text classification pipeline, follow these steps:
 
 Explore the `examples` directory for sample scripts demonstrating various use cases of the text classification pipeline.
 
+## Graphic interface
+
+This pipeline can be performed by a graphic interface tool, that was developed using [streamlit](https://streamlit.io/). To run this app follow the next steps:
+
+```bash
+cd streamlit
+streamlit run Homepage.py
+```
+A web page will open:
+
+
+https://github.com/user-attachments/assets/4bde73e2-6338-4614-8980-ef4536576258
+
+
+
 ## Contributing
 
 Contributions to the project are welcome! If you encounter any issues or have suggestions for improvements, please feel free to open an issue or submit a pull request.
