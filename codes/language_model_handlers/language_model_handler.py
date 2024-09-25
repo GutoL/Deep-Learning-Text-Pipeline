@@ -297,6 +297,9 @@ class LanguageModelHandler():
         input_ids, att_masks = self.tokenize_dataset(data[self.text_column].to_list())
 
         # Convert labels to a LongTensor
+        if data[self.label_column].dtype == object: # if the labels are in the string format, convert to int
+            data[self.label_column] = pd.factorize(data[self.label_column])[0]
+
         Y = torch.LongTensor(data[self.label_column].to_list())
         
         # Move tensors to the specified device (GPU or CPU)
