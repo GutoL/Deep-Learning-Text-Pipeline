@@ -77,8 +77,9 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
         """
         
         # Prepare paths for saving the model
-        path_to_model = '/'.join(training_parameters['model_file_name'].split('/')[:-1]) + '/'
-        model_name_file = training_parameters['model_file_name'].split('/')[-1]
+        if training_parameters['model_file_name']:
+            path_to_model = '/'.join(training_parameters['model_file_name'].split('/')[:-1]) + '/'
+            model_name_file = training_parameters['model_file_name'].split('/')[-1]
 
         # Set number of labels based on the training dataset
         self.num_labels = len(training_parameters['dataset_train'][self.label_column].value_counts())
