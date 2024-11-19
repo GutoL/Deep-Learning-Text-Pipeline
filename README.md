@@ -11,6 +11,7 @@ This project implements a pipeline for text classification using state-of-the-ar
 - **Retraining**: Retrain imported models using custom datasets for domain-specific tasks.
 - **Explainable AI**: Utilize Captum library algorithms to interpret model decisions.
 - **Layer Integrated Gradients**: Employ [Layer Integrated Gradients](https://medium.com/@kevinkhang2909/xai-use-captum-to-deep-dive-sentiment-analysis-86b46bff092b) to understand word-level contributions to predictions.
+- **MLflow Integration**: Run and track experiments with MLflow, including an example in the `examples/mlflow` directory for training Large Language Models (LLMs) for text classification.
 
 ## Getting Started
 
@@ -32,7 +33,7 @@ To get started with the text classification pipeline, follow these steps:
 
 ## Examples
 
-Explore the `examples` directory for sample scripts demonstrating various use cases of the text classification pipeline.
+Explore the `examples` directory for sample scripts demonstrating various use cases of the text classification pipeline. This includes examples for using MLflow for tracking and training LLMs for text classification in `examples/mlflow`.
 
 ## Graphic interface
 
@@ -47,7 +48,16 @@ A web page will open:
 
 https://github.com/user-attachments/assets/4bde73e2-6338-4614-8980-ef4536576258
 
+## Technologies Used
+The project makes use of the following technologies:
 
+- **Python**: Core language for developing the pipeline.
+- **Hugging Face Transformers**: For importing and using pre-trained models.
+- **Captum**: For implementing explainable AI methods.
+- **MLflow**: For experiment tracking and model lifecycle management.
+- **Streamlit**: For building the graphical user interface.
+- **Pandas**: For data manipulation.
+- **PyTorch**: As the deep learning framework for model training.
 
 ## Contributing
 
