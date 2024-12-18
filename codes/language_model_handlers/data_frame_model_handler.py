@@ -8,13 +8,13 @@ from transformers import pipeline
 import gc
 
 class DataFrameModelHandler():
-    def __init__(self, model_name, trainel_model_path=None, negative_class_prefix='no') -> None:
+    def __init__(self, model_name, trained_model_path=None, negative_class_prefix='no') -> None:
         
         # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(trainel_model_path+model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(trained_model_path+model_name)
         # Load Model
-        # self.model = torch.load(path+model_name+'/'+model_name+'.pth')
-        self.model = AutoModelForSequenceClassification.from_pretrained(trainel_model_path+model_name)
+        self.model = torch.load(trained_model_path+model_name+'/'+model_name+'.pth')
+        # self.model = AutoModelForSequenceClassification.from_pretrained(trainel_model_path+model_name)
 
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,9 +58,9 @@ class DataFrameModelHandler():
                 # Yield the original text if it doesn't exceed the limit
                 yield text
             
-                
+                        
     def classify_dataframe(self, df, original_text_column, text_column, extra_columns_to_save, results_file_name, batch_size, batch_size_to_save, 
-                       text_size_limit=512, threshold=None, include_text=True, id_column='id', sep_to_save='|', include_threshold_based_classification=False):
+                       text_size_limit=512, include_text=True, id_column='id', sep_to_save='|', threshold=None, include_threshold_based_classification=False):
         """
         Classifies the input dataframe using a pipeline and saves the results to a CSV file.
 
@@ -73,11 +73,11 @@ class DataFrameModelHandler():
             batch_size (int): The number of samples to process in each batch.
             batch_size_to_save (int): The number of samples to save after processing.
             text_size_limit (int): The maximum length of text to consider for classification. Default is 512.
-            threshold (float, optional): A threshold for classifying based on score. Default is None.
             include_text (bool): Whether to include the original text in the results. Default is True.
             id_column (str): The name of the ID column. Default is 'id'.
             sep_to_save (str): The separator to use when saving the results CSV. Default is '|'.
-            include_threshold_based_classification (bool): Whether to include classification based on threshold. Default is False.
+            threshold (float, optional): A threshold for classifying based on score. Default is None. SHOULD NOT BE USED FOR MULTICLASS CLASSIFICATION TASKS
+            include_threshold_based_classification (bool): Whether to include classification based on threshold. Default is False. SHOULD NOT BE USED FOR MULTICLASS CLASSIFICATION TASKS
 
         Returns:
             None: Saves the classification results to a CSV file.
