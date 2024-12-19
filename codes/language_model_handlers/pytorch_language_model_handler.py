@@ -164,6 +164,7 @@ class PytorchLanguageModelHandler(LanguageModelHandler):
                 test_loss_per_epoch.append(loss_val_avg)
 
                 print(f'Test performance after epoch {epoch_num}:', metrics)
+                # print(f'Current los:{loss_val_avg}, best loss: {best_val_loss}')
 
                 # Save the model if it has the best validation loss
                 if (loss_val_avg < best_val_loss) and training_parameters['model_file_name']:

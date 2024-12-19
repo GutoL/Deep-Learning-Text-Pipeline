@@ -182,7 +182,7 @@ class LanguageModelHandler():
         predictions = eval_pred.predictions
         labels = eval_pred.label_ids
         
-        average_mode = 'micro' #'weighted'  # Set the averaging mode for precision, recall, and F1 score
+        average_mode = 'macro' #'weighted'  # Set the averaging mode for precision, recall, and F1 score
 
         return {
             'accuracy': accuracy_score(labels, predictions),  # Calculate accuracy
